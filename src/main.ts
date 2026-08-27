@@ -4,7 +4,6 @@ import {
   exceptionsCsv,
   parseCsv,
   planChanges,
-  receiptCanonicalJson,
   serializeCsv,
   verifyChanges,
   type CsvTable,
@@ -16,6 +15,7 @@ import {
   type VerificationResult
 } from './engine.ts';
 import { captureReturnedLicense, checkoutUrl, getLicenseState, saveLicense, verifyLicense, type LicenseState } from './license.ts';
+import { getVerificationMaterial, signReceipt, verifySignedReceipt, type SignedReceipt, type VerificationMaterial } from './trust.ts';
 
 const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App mount point is missing.');
@@ -52,10 +52,11 @@ function renderLegal(kind: 'privacy' | 'terms'): void {
     <p class="eyebrow">Plain-language policy · effective 27 August 2026</p>
     <h1>${isPrivacy ? 'Your metadata stays on your desk.' : 'A receipt is evidence, not magic.'}</h1>
     ${isPrivacy ? `<section><h2>What stays local</h2><p>CSV files, filenames, captions, dates, keywords, previews, receipts, and exception lists are processed in your browser. They are not uploaded to us. The app has no analytics, advertising, or tracking.</p></section>
-    <section><h2>What is stored</h2><p>If you paste or return with a purchase license, the token and a once-daily verification result are saved in this browser’s local storage. Plus users may choose to save transformation recipes locally. You can remove both by clearing site data.</p></section>
+    <section><h2>What is stored</h2><p>A non-exportable private receipt-signing key is generated and kept in this browser’s IndexedDB when you issue a receipt or export its public verification material. If you paste or return with a purchase license, the token and a once-daily verification result are saved in local storage. Plus users may choose to save transformation recipes locally. Clearing site data removes all of these local records.</p></section>
     <section><h2>Network requests</h2><p>The app only contacts the Sociobot billing API when you buy or verify a license. Sociobot and its merchant-of-record payment partner process the purchase under their own policies. The offline app shell is cached on your device.</p></section>
     <section><h2>Questions</h2><p>Contact <a href="mailto:privacy@sociobot.in">privacy@sociobot.in</a>. Do not email sensitive metadata files.</p></section>`
-    : `<section><h2>What the app does</h2><p>The app plans changes against a metadata CSV, compares an optional second export, and creates a tamper-evident digest. It does not edit photos, write XMP/IPTC data, inspect pixels, or prove that another tool successfully embedded metadata in an image.</p></section>
+    : `<section><h2>What the app does</h2><p>The app plans changes against a metadata CSV, compares an optional second export, and signs a receipt with a private key generated in this browser. It does not edit photos, write XMP/IPTC data, inspect pixels, or prove that another tool successfully embedded metadata in an image.</p></section>
+    <section><h2>Receipt trust model</h2><p>A receipt’s signature is independently checkable only with the separately exported public verification material. Save that public file in a location an editor of the receipt cannot replace. The key identifies this browser profile, not a person, organization, legal signer, or trusted timestamp authority. Clearing browser data loses the ability to make further receipts with the same key, but does not prevent verification of old receipts using their saved public material.</p></section>
     <section><h2>Your responsibility</h2><p>Keep backups, inspect the preview and exception list, and test your external metadata tool on a small set first. Stable, unique identifiers are essential for reliable verification.</p></section>
     <section><h2>License and purchase</h2><p>The core receipt workflow is free. Plus is a $19 one-time license for one person and includes local saved recipes, custom receipt notes, and JSON evidence export. Sociobot/Dodo is the merchant of record and handles payment and refunds. A refund revokes the license automatically.</p></section>
     <section><h2>Warranty</h2><p>The software is provided “as is” under the MIT License, without warranty. You retain responsibility for your files and metadata workflow.</p></section>`}
@@ -76,12 +77,13 @@ function renderApp(): void {
   document.title = 'Metadata Change Receipt — prove every planned edit';
   app.innerHTML = `${sharedHeader()}
   <div class="offline-banner" id="offline-banner" role="status" hidden><strong>Offline:</strong> the workbench still works. License checks will resume when you reconnect.</div>
+  <aside class="update-toast" id="update-toast" role="status" hidden><p>An updated offline workbench is ready.</p><button class="button primary" id="apply-update" type="button">Reload update</button></aside>
   <main id="main">
     <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
         <p class="eyebrow">Local metadata audit desk · nothing uploaded</p>
         <h1 id="hero-title">Every edit.<br><em>Receipted.</em></h1>
-        <p class="lede">Plan batch date, caption, keyword, and IPTC changes from a CSV. See every before and after, catch exceptions, then take a tamper-evident receipt back to your archive.</p>
+        <p class="lede">Plan batch date, caption, keyword, and IPTC changes from a CSV. See every before and after, catch exceptions, then take a cryptographically signed receipt back to your archive.</p>
         <div class="hero-actions"><a class="button primary" href="#workbench">Start with a CSV</a><button class="button quiet" id="load-sample" type="button">Try the sample</button></div>
         <p class="privacy-note"><span aria-hidden="true">●</span> Your filenames and location data never leave this browser.</p>
       </div>
@@ -142,6 +144,7 @@ function renderApp(): void {
             <details class="exceptions-panel" id="exceptions-panel"><summary><span>Exception list</span><strong id="exception-count">0</strong></summary><div id="exceptions-content"></div></details>
             <section class="verify-box" aria-labelledby="verify-title"><div><p class="eyebrow">Optional but recommended</p><h4 id="verify-title">Check the post-edit export</h4><p>After running your metadata tool, export a fresh CSV with the same identity and target columns. We’ll compare every planned change.</p></div><label class="button quiet" for="verify-file">Choose verification CSV<input id="verify-file" type="file" accept=".csv,text/csv"></label><div id="verify-status" aria-live="polite"></div></section>
             <label class="receipt-note" id="note-wrap" hidden>Receipt note <textarea id="receipt-note" rows="2" maxlength="300" placeholder="Job number, operator, or handoff note"></textarea><small>Plus feature. Stored only inside exported receipts.</small></label>
+            <section class="signature-box" aria-labelledby="signature-title"><div><p class="eyebrow">Independent verification</p><h4 id="signature-title">Keep the public key apart from the receipt.</h4><p>This browser generates a private P-256 signing key on first use. A signed <code>.receipt.json</code> is downloaded with the printable receipt. Export its public verification material once and save it separately; anyone can use both files here to check whether the receipt was changed. The key proves control of this browser profile, not a named identity or date.</p></div><div class="signature-actions"><button class="button quiet" id="download-verification-key" type="button">Download public verification material</button><p class="muted" id="signing-key-status" aria-live="polite"></p></div><div class="verify-receipt"><label>Signed receipt JSON<input id="signed-receipt-file" type="file" accept="application/json,.json"></label><label>Public verification JSON<input id="verification-material-file" type="file" accept="application/json,.json"></label><button class="button quiet" id="verify-receipt" type="button">Verify receipt signature</button><p id="receipt-signature-status" aria-live="polite"></p></div></section>
             <div class="issue-bar"><div><strong>Ready to issue</strong><span id="issue-summary"></span></div><div><button class="button quiet" id="download-planned" type="button">Export planned CSV</button><button class="button quiet plus-action" id="download-json" type="button">JSON evidence <span>Plus</span></button><button class="button primary" id="issue-receipt" type="button">Issue signed receipt</button></div></div>
           </div>
         </div>
@@ -151,10 +154,10 @@ function renderApp(): void {
 
     <section class="method" id="how-it-works" aria-labelledby="method-title">
       <div><p class="eyebrow">Independent by design</p><h2 id="method-title">A paper trail your catalog doesn’t own.</h2></div>
-      <ol><li><span>1</span><div><h3>Export</h3><p>Bring a plain CSV from the system you already use. No proprietary catalog connection.</p></div></li><li><span>2</span><div><h3>Rehearse</h3><p>Apply one explicit rule and see the exact set before running a risky batch job.</p></div></li><li><span>3</span><div><h3>Reconcile</h3><p>Compare a new export, isolate every mismatch, and seal the full record with SHA-256.</p></div></li></ol>
+      <ol><li><span>1</span><div><h3>Export</h3><p>Bring a plain CSV from the system you already use. No proprietary catalog connection.</p></div></li><li><span>2</span><div><h3>Rehearse</h3><p>Apply one explicit rule and see the exact set before running a risky batch job.</p></div></li><li><span>3</span><div><h3>Reconcile</h3><p>Compare a new export, isolate every mismatch, and sign the exact record with your browser-held key.</p></div></li></ol>
     </section>
 
-    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">For repeat archive work</p><h2 id="plus-title">Keep the core free. Make the routine faster.</h2><p>Plus adds locally saved recipes, custom receipt notes, and machine-readable JSON evidence. Core CSV planning, verification, and all exports stay free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the signed evidence payload as JSON</li></ul></div><aside><p class="price"><strong>$19</strong> one time</p><p>One-person license · no subscription</p><a class="button primary" href="${checkoutUrl}">Buy Plus securely</a><button class="text-button" id="restore-license" type="button">Have a license? Restore it</button><p class="license-status" id="license-status" hidden></p><small>Sociobot/Dodo is merchant of record. Refunds are handled there.</small></aside></section>
+    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">For repeat archive work</p><h2 id="plus-title">Keep the core free. Make the routine faster.</h2><p>Plus adds locally saved recipes, custom receipt notes, and an extra plain evidence-payload export. Signed receipt and public-key verification exports remain free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the unsigned evidence payload for another system</li></ul></div><aside><p class="price"><strong>$19</strong> one time</p><p>One-person license · no subscription</p><a class="button primary" href="${checkoutUrl}">Buy Plus securely</a><button class="text-button" id="restore-license" type="button">Have a license? Restore it</button><p class="license-status" id="license-status" hidden></p><small>Sociobot/Dodo is merchant of record. Refunds are handled there.</small></aside></section>
   </main>
   ${sharedFooter()}
   <dialog id="license-dialog" aria-labelledby="license-title"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close license dialog">×</button><p class="eyebrow">Metadata Change Receipt Plus</p><h2 id="license-title">Restore your license</h2><p>Paste the token from your purchase email. It is stored only in this browser and checked with Sociobot at most once a day.</p><label>License token<input id="license-token" type="text" autocomplete="off" spellcheck="false"></label><p id="license-message" class="form-message" aria-live="polite"></p><div class="dialog-actions"><a class="button quiet" href="${checkoutUrl}">Buy for $19</a><button class="button primary" id="verify-license" type="button">Verify and unlock</button></div></form></dialog>`;
@@ -185,8 +188,10 @@ function bindApp(): void {
   byId<HTMLInputElement>('verify-file').addEventListener('change', () => { const file = byId<HTMLInputElement>('verify-file').files?.[0]; if (file) void loadVerification(file); });
   byId('download-changes').addEventListener('click', () => activePlan && downloadText('metadata-changes.csv', changesCsv(activePlan.changes), 'text/csv'));
   byId('download-planned').addEventListener('click', () => activePlan && downloadText('planned-metadata.csv', serializeCsv(activePlan.plannedTable.headers, activePlan.plannedTable.rows), 'text/csv'));
-  byId('issue-receipt').addEventListener('click', () => void issueReceipt('html'));
-  byId('download-json').addEventListener('click', () => licenseState.unlocked ? void issueReceipt('json') : openLicenseDialog());
+  byId('issue-receipt').addEventListener('click', () => void issueReceipt());
+  byId('download-json').addEventListener('click', () => licenseState.unlocked ? downloadEvidencePayload() : openLicenseDialog());
+  byId('download-verification-key').addEventListener('click', () => void downloadVerificationMaterial());
+  byId('verify-receipt').addEventListener('click', () => void verifyReceiptFiles());
   byId('save-recipe').addEventListener('click', () => licenseState.unlocked ? saveRecipe() : openLicenseDialog());
   byId<HTMLSelectElement>('saved-recipes').addEventListener('change', loadRecipe);
   byId('open-license').addEventListener('click', openLicenseDialog);
@@ -320,30 +325,62 @@ function makePayload(): ReceiptPayload {
   return { version: 1, issuedAt: new Date().toISOString(), sourceName: activePlan.sourceName, sourceRows: activePlan.totalRows, rule: activePlan.rule, changes: activePlan.changes, exceptions: allExceptions(), verification, note: licenseState.unlocked ? byId<HTMLTextAreaElement>('receipt-note').value.trim() : '' };
 }
 
-async function sha256(text: string): Promise<string> {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function issueReceipt(format: 'html' | 'json'): Promise<void> {
+async function issueReceipt(): Promise<void> {
   if (!activePlan) return;
-  const button = byId<HTMLButtonElement>(format === 'html' ? 'issue-receipt' : 'download-json');
+  const button = byId<HTMLButtonElement>('issue-receipt');
   const original = button.textContent ?? ''; button.disabled = true; button.textContent = 'Sealing…';
   try {
     const payload = makePayload();
-    const canonical = receiptCanonicalJson(payload);
-    const digest = await sha256(canonical);
-    if (format === 'json') {
-      downloadText('metadata-change-receipt.json', JSON.stringify({ algorithm: 'SHA-256', digest, payload }, null, 2), 'application/json');
-    } else {
-      const rows = payload.changes.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.before)}</td><td>${escapeHtml(entry.after)}</td></tr>`).join('');
-      const exceptionRows = payload.exceptions.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.reason)}</td></tr>`).join('');
-      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Metadata change receipt — ${escapeHtml(payload.sourceName)}</title><style>body{font:16px/1.5 Arial,sans-serif;color:#1e2522;max-width:1100px;margin:40px auto;padding:0 24px}h1{font:48px Georgia,serif;margin-bottom:8px}.seal{border:3px solid #1646a0;padding:16px;word-break:break-all;background:#f4ead2}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;border-bottom:1px solid #777;padding:8px;vertical-align:top}th{background:#f4ead2}.warning{border-left:6px solid #c53d2d;padding:12px 16px;background:#fff4eb}@media print{body{margin:0}.no-print{display:none}thead{display:table-header-group}}</style></head><body><p>METADATA CHANGE RECEIPT · VERSION 1</p><h1>Before / after receipt</h1><p><strong>Source:</strong> ${escapeHtml(payload.sourceName)} · ${payload.sourceRows.toLocaleString()} rows<br><strong>Issued:</strong> ${escapeHtml(payload.issuedAt)}<br><strong>Rule:</strong> ${escapeHtml(describeRule(payload.rule))}</p>${payload.note ? `<p><strong>Note:</strong> ${escapeHtml(payload.note)}</p>` : ''}<div class="seal"><strong>SHA-256 evidence digest</strong><br><code>${digest}</code><p>This digest seals the canonical JSON evidence used to create this document. Any content change produces a different digest. It is tamper-evident, not proof of the issuer’s identity.</p></div><p class="warning"><strong>Boundary:</strong> This receipt records expected CSV values${payload.verification ? ` and comparison with ${escapeHtml(payload.verification.checkedSourceName)}` : ''}. It does not prove pixels or embedded XMP/IPTC were written.</p><h2>Changes (${payload.changes.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No changes.</td></tr>'}</tbody></table><h2>Exceptions (${payload.exceptions.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Reason</th></tr></thead><tbody>${exceptionRows || '<tr><td colspan="4">No exceptions.</td></tr>'}</tbody></table><p class="no-print">Keep this file with the source CSV, changes CSV, and exceptions CSV.</p></body></html>`;
-      const embeddedEvidence = `<details class="no-print"><summary>Canonical evidence used for this digest</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">${escapeHtml(canonical)}</pre></details>`;
-      downloadText('metadata-change-receipt.html', html.replace('</body>', `${embeddedEvidence}</body>`), 'text/html');
-    }
-    announce(`Signed ${format.toUpperCase()} receipt downloaded with digest ${digest.slice(0, 12)}…`);
+    const { receipt, material } = await signReceipt(payload);
+    const rows = payload.changes.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.before)}</td><td>${escapeHtml(entry.after)}</td></tr>`).join('');
+    const exceptionRows = payload.exceptions.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.reason)}</td></tr>`).join('');
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Metadata change receipt — ${escapeHtml(payload.sourceName)}</title><style>body{font:16px/1.5 Arial,sans-serif;color:#1e2522;max-width:1100px;margin:40px auto;padding:0 24px}h1{font:48px Georgia,serif;margin-bottom:8px}.seal{border:3px solid #1646a0;padding:16px;word-break:break-all;background:#f4ead2}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;border-bottom:1px solid #777;padding:8px;vertical-align:top}th{background:#f4ead2}.warning{border-left:6px solid #c53d2d;padding:12px 16px;background:#fff4eb}@media print{body{margin:0}.no-print{display:none}thead{display:table-header-group}}</style></head><body><p>METADATA CHANGE RECEIPT · VERSION 2</p><h1>Before / after receipt</h1><p><strong>Source:</strong> ${escapeHtml(payload.sourceName)} · ${payload.sourceRows.toLocaleString()} rows<br><strong>Issued:</strong> ${escapeHtml(payload.issuedAt)}<br><strong>Rule:</strong> ${escapeHtml(describeRule(payload.rule))}</p>${payload.note ? `<p><strong>Note:</strong> ${escapeHtml(payload.note)}</p>` : ''}<div class="seal"><strong>Cryptographic signature</strong><br><code>ECDSA P-256 / SHA-256 · key ID ${escapeHtml(receipt.keyId)}</code><p>This printable rendering is accompanied by <code>metadata-change-receipt.receipt.json</code>, which contains the signed evidence. Verify that file using the separately saved <code>metadata-change-receipt.public-key.json</code>. A valid signature detects edits made without this browser profile’s private key; it is not proof of a person, organization, or trusted timestamp.</p></div><p class="warning"><strong>Boundary:</strong> This receipt records expected CSV values${payload.verification ? ` and comparison with ${escapeHtml(payload.verification.checkedSourceName)}` : ''}. It does not prove pixels or embedded XMP/IPTC were written.</p><h2>Changes (${payload.changes.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No changes.</td></tr>'}</tbody></table><h2>Exceptions (${payload.exceptions.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Reason</th></tr></thead><tbody>${exceptionRows || '<tr><td colspan="4">No exceptions.</td></tr>'}</tbody></table><p class="no-print">Keep the printable file with its signed JSON, source CSV, changes CSV, and exceptions CSV.</p></body></html>`;
+    downloadText('metadata-change-receipt.html', html, 'text/html');
+    downloadText('metadata-change-receipt.receipt.json', JSON.stringify(receipt, null, 2), 'application/json');
+    byId('signing-key-status').textContent = `Signed with local key ${material.keyId.slice(0, 18)}… Save its public material separately.`;
+    announce(`Signed receipt and its verification JSON downloaded with key ${receipt.keyId.slice(0, 12)}…`);
+  } catch (error) {
+    announce(`Could not issue a signed receipt: ${error instanceof Error ? error.message : 'Unknown signing error.'}`);
   } finally { button.disabled = false; button.textContent = original; }
+}
+
+function downloadEvidencePayload(): void {
+  try {
+    downloadText('metadata-change-evidence.json', JSON.stringify(makePayload(), null, 2), 'application/json');
+    announce('Plain evidence payload downloaded. It is not a signed receipt.');
+  } catch (error) { announce(error instanceof Error ? error.message : 'Evidence export failed.'); }
+}
+
+async function downloadVerificationMaterial(): Promise<void> {
+  const button = byId<HTMLButtonElement>('download-verification-key');
+  const original = button.textContent ?? ''; button.disabled = true; button.textContent = 'Preparing…';
+  try {
+    const material = await getVerificationMaterial();
+    downloadText('metadata-change-receipt.public-key.json', JSON.stringify(material, null, 2), 'application/json');
+    byId('signing-key-status').textContent = `Public material exported. Key ID ${material.keyId}. Store it outside the receipt folder.`;
+    announce('Public verification material downloaded.');
+  } catch (error) {
+    byId('signing-key-status').textContent = error instanceof Error ? error.message : 'Could not create public verification material.';
+  } finally { button.disabled = false; button.textContent = original; }
+}
+
+async function verifyReceiptFiles(): Promise<void> {
+  const status = byId('receipt-signature-status');
+  const receiptFile = byId<HTMLInputElement>('signed-receipt-file').files?.[0];
+  const materialFile = byId<HTMLInputElement>('verification-material-file').files?.[0];
+  if (!receiptFile || !materialFile) { status.textContent = 'Choose both the signed receipt JSON and its separately saved public verification JSON.'; status.className = 'error-message'; return; }
+  status.textContent = 'Checking the signature…'; status.className = 'muted';
+  try {
+    const receipt = JSON.parse(await receiptFile.text()) as SignedReceipt;
+    const material = JSON.parse(await materialFile.text()) as VerificationMaterial;
+    const result = await verifySignedReceipt(receipt, material);
+    status.textContent = result.valid ? `✓ ${result.reason}` : `! ${result.reason}`;
+    status.className = result.valid ? 'success-message' : 'error-message';
+    announce(result.valid ? 'Receipt signature verified.' : `Receipt verification failed: ${result.reason}`);
+  } catch (error) {
+    status.textContent = `! ${error instanceof Error ? error.message : 'The selected files are not valid JSON.'}`;
+    status.className = 'error-message';
+  }
 }
 
 function describeRule(rule: TransformRule): string {
@@ -409,4 +446,27 @@ function setLoading(loading: boolean, message = ''): void {
 }
 function showError(message: string): void { announce(`Error: ${message}`); const summary = byId('file-summary'); summary.hidden = false; summary.innerHTML = `<p class="error-message"><strong>Couldn’t read that CSV.</strong> ${escapeHtml(message)}</p>`; }
 function updateOnlineState(): void { const banner = document.getElementById('offline-banner'); if (banner) banner.hidden = navigator.onLine; }
-function registerServiceWorker(): void { if ('serviceWorker' in navigator && import.meta.env.PROD) window.addEventListener('load', () => void navigator.serviceWorker.register('/sw.js')); }
+function registerServiceWorker(): void {
+  if (!('serviceWorker' in navigator) || !import.meta.env.PROD) return;
+  window.addEventListener('load', () => void (async () => {
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    let reloading = false;
+    const showUpdate = () => {
+      const toast = document.getElementById('update-toast');
+      const apply = document.getElementById('apply-update');
+      if (!toast || !apply) return;
+      toast.hidden = false;
+      apply.addEventListener('click', () => registration.waiting?.postMessage({ type: 'SKIP_WAITING' }), { once: true });
+    };
+    if (registration.waiting && navigator.serviceWorker.controller) showUpdate();
+    registration.addEventListener('updatefound', () => {
+      const installing = registration.installing;
+      installing?.addEventListener('statechange', () => {
+        if (installing.state === 'installed' && navigator.serviceWorker.controller) showUpdate();
+      });
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!reloading) { reloading = true; window.location.reload(); }
+    });
+  })().catch(() => { /* the online app remains usable if registration is unavailable */ }));
+}

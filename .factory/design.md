@@ -45,7 +45,7 @@ No font downloads are needed, improving privacy and first load.
 - Drop zones resemble clipped envelopes; accepted files visibly become a source sheet with row/field counts.
 - Preview changes are overprinted: old values struck in vermillion, new values underlined in cobalt. Exceptions get a stamped `EXCEPTION` label and a plain-language reason.
 - Every computation is deterministic and local. Buttons use verbs and report outcomes in a polite live region.
-- Receipt identity is a SHA-256 digest over canonical receipt data. The signature is tamper-evident, not an identity or cryptographic authorship claim; the UI states that distinction.
+- Receipt evidence is signed with ECDSA P-256 using a private key generated locally and retained in browser IndexedDB. The UI exports public verification material separately, displays its key ID, and makes the trust boundary explicit: a valid signature proves control of that browser profile at signing time only when the public file was retained outside the receipt’s control. It is not a personal, organizational, legal, or trusted-timestamp identity claim.
 
 ## Motion
 

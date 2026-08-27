@@ -10,11 +10,11 @@ It is an evidence layer around Lightroom, ExifTool, Immich, PhotoPrism, or a spr
 - Applies exact value, find/replace, keyword append, text prepend, and date-shift rules.
 - Scopes a rule with an optional exact-match condition.
 - Isolates blank/duplicate identifiers, malformed dates, structural row problems, missing assets, and mismatched post-edit values.
-- Exports the complete planned CSV, change ledger, exceptions CSV, and a human-readable HTML receipt.
-- Seals the receipt with SHA-256 over embedded canonical JSON evidence. This is tamper-evident, not an identity signature.
+- Exports the complete planned CSV, change ledger, exceptions CSV, a human-readable HTML receipt, and its signed receipt JSON.
+- Signs receipt evidence with an ECDSA P-256 private key kept in this browser’s IndexedDB. The separately exportable public verification material can verify a receipt without the private key; save it independently from the receipt. It identifies this browser profile, not a person, organization, or trusted timestamp.
 - Works offline after the first production visit.
 
-The free workflow includes every core CSV export at any supported row count. The optional $19 one-time Plus license adds local recipe saving, receipt notes, and JSON evidence export through the Sociobot billing API.
+The free workflow includes every core CSV export, signed receipt, and public-key verification material at any supported row count. The optional $19 one-time Plus license adds local recipe saving, receipt notes, and a plain evidence-payload JSON export through the registered Sociobot/Dodo Live billing API.
 
 ## CSV expectations
 
@@ -48,6 +48,8 @@ A11Y_URL=http://127.0.0.1:4173 npm run test:a11y
 ```
 
 `CHROMIUM_PATH` can override the browser executable used by those scripts.
+
+The browser check creates a signed receipt, verifies it using separately exported public material, confirms a changed payload is rejected, then fetches the emitted JS/CSS with an HTTP-cache bypass while offline and reloads the workbench to prove that the worker’s generated precache contains the shell.
 
 ## Deployment
 
