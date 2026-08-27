@@ -37,4 +37,9 @@ A11Y_URL=http://127.0.0.1:4173 npm run test:a11y
 
 ## Deploy
 
-Deploy `dist/` as a Standard static site. The generated `dist/sw.js` is build-specific and must be deployed together with the corresponding hashed assets.
+Deployed as Azure Static Web Apps **Standard** on 2026-08-27:
+
+- https://metadata-change-receipt.sociobot.in/
+- `dist/sw.js` is build-specific and was deployed with its corresponding hashed assets.
+- `/opt/fleet/lib/verify-url.sh` passed against the live URL: HTTPS 200, title/lang/one h1/main/alt/button checks pass, and no browser console or page errors.
+- Live `E2E_URL=https://metadata-change-receipt.sociobot.in npm run test:e2e` passed, including signed receipt verification, tamper rejection, and cold-cache offline reload. Live axe checks also reported zero violations.
