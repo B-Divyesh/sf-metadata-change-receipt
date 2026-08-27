@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Metadata Change Receipt mark</title>
+  <rect width="64" height="64" rx="8" fill="#f4ead2"/>
+  <path d="M14 10h36v44l-6-4-6 4-6-4-6 4-6-4-6 4V10Z" fill="#fff9ea" stroke="#1e2522" stroke-width="3"/>
+  <path d="M22 23h20M22 31h13M22 39h18" stroke="#1646a0" stroke-width="4" stroke-linecap="square"/>
+  <circle cx="43" cy="39" r="8" fill="none" stroke="#c53d2d" stroke-width="3"/>
+</svg>

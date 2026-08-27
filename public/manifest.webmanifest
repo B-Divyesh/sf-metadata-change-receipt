@@ -1,0 +1,10 @@
+{
+  "name": "Metadata Change Receipt",
+  "short_name": "Change Receipt",
+  "description": "Local-first evidence for batch photo metadata edits.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4ead2",
+  "theme_color": "#f4ead2",
+  "icons": [{ "src": "/mark.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
