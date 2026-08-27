@@ -201,6 +201,11 @@ export function planChanges(table: CsvTable, rule: TransformRule): PlanResult {
   let matchedRows = 0;
   let unchangedRows = 0;
   let skippedRows = 0;
+  const identityCounts = new Map<string, number>();
+  for (const row of table.rows) {
+    const identity = (row[rule.identityField] ?? '').trim();
+    if (identity) identityCounts.set(identity, (identityCounts.get(identity) ?? 0) + 1);
+  }
 
   table.rows.forEach((original, index) => {
     const rowNumber = index + 2;
@@ -209,6 +214,10 @@ export function planChanges(table: CsvTable, rule: TransformRule): PlanResult {
     const identity = (original[rule.identityField] ?? '').trim();
     if (!identity) {
       exceptions.push({ rowNumber, identity: '(blank)', field: rule.identityField, reason: 'Identity value is blank; this row cannot be audited safely.' });
+      return;
+    }
+    if ((identityCounts.get(identity) ?? 0) > 1) {
+      exceptions.push({ rowNumber, identity, field: rule.identityField, reason: 'Identity is duplicated in the source CSV; use a unique field before planning changes.' });
       return;
     }
     if (original.__extra_columns) {

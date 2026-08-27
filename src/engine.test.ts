@@ -52,6 +52,13 @@ describe('transformation and evidence', () => {
     expect(parseCsv(exceptionsCsv(plan.exceptions)).rows).toHaveLength(2);
   });
 
+  it('lists every duplicate source identity as an exception', () => {
+    const plan = planChanges(parseCsv('filename,caption\na.jpg,one\na.jpg,two\nb.jpg,three'), { ...baseRule, targetField: 'caption', operation: 'set', value: 'done' });
+    expect(plan.changes.map((item) => item.identity)).toEqual(['b.jpg']);
+    expect(plan.exceptions).toHaveLength(2);
+    expect(plan.exceptions.every((item) => /duplicated/.test(item.reason))).toBe(true);
+  });
+
   it('does not duplicate an existing keyword with different casing', () => {
     const plan = planChanges(parseCsv('filename,keywords\na.jpg,Nature; ARCHIVE'), baseRule);
     expect(plan.changes[0]?.after).toBe('Nature; ARCHIVE; reviewed');

@@ -21,6 +21,11 @@ const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App mount point is missing.');
 const app: HTMLDivElement = appElement;
 
+let sourceTable: CsvTable | null = null;
+let activePlan: PlanResult | null = null;
+let verification: VerificationResult | null = null;
+let licenseState: LicenseState = { token: '', unlocked: false, checking: false, reason: '' };
+
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
@@ -81,7 +86,7 @@ function renderApp(): void {
         <p class="privacy-note"><span aria-hidden="true">●</span> Your filenames and location data never leave this browser.</p>
       </div>
       <figure class="hero-art">
-        <picture><source media="(max-width: 700px)" srcset="/assets/receipt-worktable-768.webp"><img src="/assets/receipt-worktable-1536.webp" width="1536" height="1024" alt="A cobalt and vermillion risograph collage of contact sheets connected by a long paper receipt" fetchpriority="high" decoding="async"></picture>
+        <picture><source type="image/avif" srcset="/assets/receipt-worktable-768.avif 768w, /assets/receipt-worktable-1536.avif 1536w" sizes="(max-width: 700px) 768px, 800px"><source type="image/webp" srcset="/assets/receipt-worktable-768.webp 768w, /assets/receipt-worktable-1536.webp 1536w" sizes="(max-width: 700px) 768px, 800px"><img src="/assets/receipt-worktable-1536.jpg" srcset="/assets/receipt-worktable-768.jpg 768w, /assets/receipt-worktable-1536.jpg 1536w" sizes="(max-width: 700px) 768px, 800px" width="1536" height="1024" alt="A cobalt and vermillion risograph collage of contact sheets connected by a long paper receipt" fetchpriority="high" decoding="async"></picture>
         <figcaption>From “I think it changed” to a row-by-row record.</figcaption>
       </figure>
     </section>
@@ -149,7 +154,7 @@ function renderApp(): void {
       <ol><li><span>1</span><div><h3>Export</h3><p>Bring a plain CSV from the system you already use. No proprietary catalog connection.</p></div></li><li><span>2</span><div><h3>Rehearse</h3><p>Apply one explicit rule and see the exact set before running a risky batch job.</p></div></li><li><span>3</span><div><h3>Reconcile</h3><p>Compare a new export, isolate every mismatch, and seal the full record with SHA-256.</p></div></li></ol>
     </section>
 
-    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">For repeat archive work</p><h2 id="plus-title">Keep the core free. Make the routine faster.</h2><p>Plus adds locally saved recipes, custom receipt notes, and machine-readable JSON evidence. Core CSV planning, verification, and all exports stay free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the signed evidence payload as JSON</li></ul></div><aside><p class="price"><strong>$19</strong> one time</p><p>One-person license · no subscription</p><a class="button primary" href="${checkoutUrl}">Buy Plus securely</a><button class="text-button" id="restore-license" type="button">Have a license? Restore it</button><small>Sociobot/Dodo is merchant of record. Refunds are handled there.</small></aside></section>
+    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">For repeat archive work</p><h2 id="plus-title">Keep the core free. Make the routine faster.</h2><p>Plus adds locally saved recipes, custom receipt notes, and machine-readable JSON evidence. Core CSV planning, verification, and all exports stay free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the signed evidence payload as JSON</li></ul></div><aside><p class="price"><strong>$19</strong> one time</p><p>One-person license · no subscription</p><a class="button primary" href="${checkoutUrl}">Buy Plus securely</a><button class="text-button" id="restore-license" type="button">Have a license? Restore it</button><p class="license-status" id="license-status" hidden></p><small>Sociobot/Dodo is merchant of record. Refunds are handled there.</small></aside></section>
   </main>
   ${sharedFooter()}
   <dialog id="license-dialog" aria-labelledby="license-title"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close license dialog">×</button><p class="eyebrow">Metadata Change Receipt Plus</p><h2 id="license-title">Restore your license</h2><p>Paste the token from your purchase email. It is stored only in this browser and checked with Sociobot at most once a day.</p><label>License token<input id="license-token" type="text" autocomplete="off" spellcheck="false"></label><p id="license-message" class="form-message" aria-live="polite"></p><div class="dialog-actions"><a class="button quiet" href="${checkoutUrl}">Buy for $19</a><button class="button primary" id="verify-license" type="button">Verify and unlock</button></div></form></dialog>`;
@@ -157,11 +162,6 @@ function renderApp(): void {
   bindApp();
   registerServiceWorker();
 }
-
-let sourceTable: CsvTable | null = null;
-let activePlan: PlanResult | null = null;
-let verification: VerificationResult | null = null;
-let licenseState: LicenseState = { token: '', unlocked: false, checking: false, reason: '' };
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -296,7 +296,7 @@ function renderExceptions(): void {
   byId('exception-count').textContent = String(exceptions.length);
   byId('exceptions-content').innerHTML = exceptions.length
     ? `<div class="table-scroll" tabindex="0" aria-label="Scrollable exceptions table"><table><thead><tr><th>Row</th><th>Identity</th><th>Field</th><th>Reason</th></tr></thead><tbody>${exceptions.slice(0, 100).map((item) => `<tr><td>${item.rowNumber}</td><td><code>${escapeHtml(item.identity)}</code></td><td>${escapeHtml(item.field)}</td><td>${escapeHtml(item.reason)}</td></tr>`).join('')}</tbody></table></div><button class="text-button" id="download-exceptions" type="button">Download all exceptions CSV</button>`
-    : '<p class="success-message">✓ No exceptions in the current evidence set.</p>';
+    : '<p class="success-message">✓ No exceptions in the current evidence set.</p><button class="text-button" id="download-exceptions" type="button">Download empty exceptions CSV</button>';
   document.getElementById('download-exceptions')?.addEventListener('click', () => downloadText('metadata-exceptions.csv', exceptionsCsv(exceptions), 'text/csv'));
 }
 
@@ -339,7 +339,8 @@ async function issueReceipt(format: 'html' | 'json'): Promise<void> {
       const rows = payload.changes.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.before)}</td><td>${escapeHtml(entry.after)}</td></tr>`).join('');
       const exceptionRows = payload.exceptions.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.reason)}</td></tr>`).join('');
       const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Metadata change receipt — ${escapeHtml(payload.sourceName)}</title><style>body{font:16px/1.5 Arial,sans-serif;color:#1e2522;max-width:1100px;margin:40px auto;padding:0 24px}h1{font:48px Georgia,serif;margin-bottom:8px}.seal{border:3px solid #1646a0;padding:16px;word-break:break-all;background:#f4ead2}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;border-bottom:1px solid #777;padding:8px;vertical-align:top}th{background:#f4ead2}.warning{border-left:6px solid #c53d2d;padding:12px 16px;background:#fff4eb}@media print{body{margin:0}.no-print{display:none}thead{display:table-header-group}}</style></head><body><p>METADATA CHANGE RECEIPT · VERSION 1</p><h1>Before / after receipt</h1><p><strong>Source:</strong> ${escapeHtml(payload.sourceName)} · ${payload.sourceRows.toLocaleString()} rows<br><strong>Issued:</strong> ${escapeHtml(payload.issuedAt)}<br><strong>Rule:</strong> ${escapeHtml(describeRule(payload.rule))}</p>${payload.note ? `<p><strong>Note:</strong> ${escapeHtml(payload.note)}</p>` : ''}<div class="seal"><strong>SHA-256 evidence digest</strong><br><code>${digest}</code><p>This digest seals the canonical JSON evidence used to create this document. Any content change produces a different digest. It is tamper-evident, not proof of the issuer’s identity.</p></div><p class="warning"><strong>Boundary:</strong> This receipt records expected CSV values${payload.verification ? ` and comparison with ${escapeHtml(payload.verification.checkedSourceName)}` : ''}. It does not prove pixels or embedded XMP/IPTC were written.</p><h2>Changes (${payload.changes.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No changes.</td></tr>'}</tbody></table><h2>Exceptions (${payload.exceptions.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Reason</th></tr></thead><tbody>${exceptionRows || '<tr><td colspan="4">No exceptions.</td></tr>'}</tbody></table><p class="no-print">Keep this file with the source CSV, changes CSV, and exceptions CSV.</p></body></html>`;
-      downloadText('metadata-change-receipt.html', html, 'text/html');
+      const embeddedEvidence = `<details class="no-print"><summary>Canonical evidence used for this digest</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px">${escapeHtml(canonical)}</pre></details>`;
+      downloadText('metadata-change-receipt.html', html.replace('</body>', `${embeddedEvidence}</body>`), 'text/html');
     }
     announce(`Signed ${format.toUpperCase()} receipt downloaded with digest ${digest.slice(0, 12)}…`);
   } finally { button.disabled = false; button.textContent = original; }
@@ -376,6 +377,12 @@ function updateLicenseUi(): void {
   const button = document.getElementById('open-license'); if (button) button.textContent = licenseState.unlocked ? 'Plus unlocked' : 'Unlock Plus';
   const note = document.getElementById('note-wrap'); if (note) note.hidden = !licenseState.unlocked;
   const picker = document.getElementById('recipe-picker'); if (picker) picker.hidden = !licenseState.unlocked;
+  const status = document.getElementById('license-status');
+  if (status) {
+    const inactive = Boolean(licenseState.token && !licenseState.unlocked && licenseState.reason && licenseState.reason !== 'offline');
+    status.hidden = !inactive;
+    status.innerHTML = inactive ? `License no longer active. <a href="${checkoutUrl}">Buy a new license</a>.` : '';
+  }
   if (licenseState.unlocked) refreshRecipes();
 }
 

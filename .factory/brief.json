@@ -1,0 +1,12 @@
+{
+  "slug": "metadata-change-receipt",
+  "title": "Metadata Change Receipt",
+  "territory": "utilities",
+  "user": "A photographer or small archive manager who needs to batch-plan and verify date, caption, keyword, and IPTC edits without trusting a black-box library import job.",
+  "smallest_useful_product": "Local desktop-web workflow that accepts exported metadata CSVs, defines a field transformation, previews affected rows, and produces a signed before/after receipt plus exceptions CSV.",
+  "success_measure": "At least 90% of a 10,000-row fixture's intended edits are represented exactly once in the receipt, and users can identify every exception without opening individual images.",
+  "artifact_class": "static-web",
+  "monetization": "one-time",
+  "constraints": "Run entirely client-side; protect filenames/location data; clearly state that CSV verification does not prove pixels or embedded XMP were written.",
+  "state": "BUILT"
+}

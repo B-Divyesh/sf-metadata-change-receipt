@@ -7,9 +7,13 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:a11y": "node scripts/a11y.mjs",
+    "test:e2e": "node scripts/smoke.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "playwright-core": "^1.58.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
