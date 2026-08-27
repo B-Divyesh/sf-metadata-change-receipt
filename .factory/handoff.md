@@ -1,4 +1,30 @@
-# Metadata Change Receipt — handoff
+# Metadata Change Receipt — verification handoff
+
+## Release status: FAIL
+
+Independent verification on 2026-08-27 tested commit `811e9ff56b1016c18aa45d2a12d3158b815a4272` and https://metadata-change-receipt.sociobot.in/. The live HTML and JS exactly match the rebuilt candidate, but this candidate must not be released as a signed/tamper-evident offline receipt product.
+
+Two P1 defects block release:
+
+1. The exported “signed” receipt is only an unkeyed SHA-256 checksum over canonical JSON that is embedded alongside the checksum. Anyone can modify evidence and recompute it, with no signing key, external commitment, or verifier. It is not tamper-evident against deliberate alteration and does not meet the brief's central trust promise.
+2. A cold-cache first-visit offline reload fails. The service worker precaches HTML but not the built JS/CSS, so after clearing normal HTTP cache and reloading offline the app root is blank and module/CSS MIME errors occur. The workbench therefore does not work offline after the first visit as claimed.
+
+See [`.factory/verification.md`](verification.md) for exact reproduction, successful checks, hashes proving deployment parity, and retest requirements.
+
+## Verification summary
+
+- `npm ci`, `npm test` (9/9), `npm run build`, repository E2E, and repository axe checks passed.
+- Independent normal, malformed/recovery, verification-mismatch, and 10,000-row browser workflows passed; the 10,000-row export had exactly 10,000 unique change rows.
+- Live page has no observed console/page errors, no serious/critical axe findings at 390px, visible keyboard focus, reduced-motion handling, no horizontal overflow at 390px/1440px, local-only initial requests, and expected CSP/HSTS/cache headers.
+- JS is 37.6 KB (13.1 KB gzip); CSS is 17.8 KB (4.8 KB gzip); mobile AVIF is 32 KB. Lighthouse could not attach to this container's Chrome, so no independent Lighthouse score is claimed.
+
+## Required next steps
+
+Implement a verifiable receipt trust model or remove the misleading integrity claim, precache the built app shell and add a cold-cache offline-reload test, then complete the retest criteria in `.factory/verification.md`.
+
+---
+
+# Builder handoff (superseded by verification status)
 
 ## Shipped
 
