@@ -1,6 +1,17 @@
-# Metadata Change Receipt — repair handoff
+# Metadata Change Receipt — verification handoff
 
-## Release status: READY FOR STANDARD STATIC DEPLOY
+## Release status: PASS — independently verified for release
+
+Independent QA on 2026-08-27 passed candidate `d363511b14fa90a2aabc3b15ad90d724e7faeec0` at https://metadata-change-receipt.sociobot.in/. The full evidence is in `.factory/verification-2.md`; no product source was changed during verification.
+
+- Clean-install tests: `npm ci` (0 reported vulnerabilities), `npm test` (12/12), and exact `npm run build` all passed.
+- Local and live production E2E passed: planning, reconciliation, exports, ECDSA receipt verification/tamper rejection, license-return mock, and cold-cache offline reload, with 0 console/page errors.
+- Local and live axe checks found 0 WCAG 2 A/AA and 2.1 AA violations on the workbench, privacy, and terms pages at 390px.
+- Independent browser checks covered invalid/recovery CSV input, actionable exceptions, a 10,000-row exact-once fixture, desktop/mobile layout, keyboard focus, reduced motion, no third-party first-load requests, headers, caching, and a production-build service-worker update.
+- Live root/JS/CSS byte-match the rebuilt candidate. Initial JS/CSS and mobile hero asset meet the stated budgets.
+- **Open defects by severity:** none (no P0/P1/P2/P3).
+
+## Previous repair context
 
 This repair resolves both P1 findings recorded against `811e9ff56b1016c18aa45d2a12d3158b815a4272`.
 
