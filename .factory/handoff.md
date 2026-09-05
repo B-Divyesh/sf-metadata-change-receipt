@@ -1,5 +1,19 @@
 # Metadata Change Receipt — verification handoff
 
+## Review 1 status: FAIL — do not release as PASS
+
+Review 1 on 2026-09-05 found **5 open findings and 12 untested public claims**. The full evidence is in `.factory/review-1.md`.
+
+- P1: the visible sample is not the required isolated demo. `/demo` and `?demo=1` are ordinary landing pages, with no persistent demo label, reset/start-real controls, isolated storage, or `.factory/demo.md`.
+- P1: `.factory/claims.json` is absent. Twelve material public claims lack the required tagged sandbox test assignment.
+- P2: the first screen does not plainly name the job/audience or show all three facts; required copy audit is missing.
+- P2: unknown paths return the regular page with HTTP 200; there is no designed 404.
+- P2: canonical, Open Graph, Twitter, apple-touch, and social-image metadata are missing.
+
+The reviewer did not alter product code. `npm ci`, unit tests, build, local/live smoke, and local/live axe checks passed. The current live runtime matches implementation commit `f4c42de20d09e7d6bda1250f23e95f98971f1219`; documentation is at `a74a4148782da43e8f3c92ec1c28b0fed505e158`.
+
+The earlier receipt-signature and cold-cache-offline P1 findings remain fixed. See the historical verification below for their evidence; it does not override this FAIL.
+
 ## Release status: PASS — independently verified for release
 
 Independent QA on 2026-08-27 passed candidate `d363511b14fa90a2aabc3b15ad90d724e7faeec0` at https://metadata-change-receipt.sociobot.in/. The full evidence is in `.factory/verification-2.md`; no product source was changed during verification.
