@@ -15,7 +15,7 @@ import {
   type VerificationResult
 } from './engine.ts';
 import { captureReturnedLicense, checkoutUrl, getLicenseState, saveLicense, verifyLicense, type LicenseState } from './license.ts';
-import { getVerificationMaterial, signReceipt, verifySignedReceipt, type SignedReceipt, type VerificationMaterial } from './trust.ts';
+import { getVerificationMaterial, resetDemoSigningKey, signReceipt, verifySignedReceipt, type SignedReceipt, type VerificationMaterial } from './trust.ts';
 
 const appElement = document.querySelector<HTMLDivElement>('#app');
 if (!appElement) throw new Error('App mount point is missing.');
@@ -25,6 +25,16 @@ let sourceTable: CsvTable | null = null;
 let activePlan: PlanResult | null = null;
 let verification: VerificationResult | null = null;
 let licenseState: LicenseState = { token: '', unlocked: false, checking: false, reason: '' };
+let isDemoMode = false;
+
+const PRODUCT_ORIGIN = 'https://metadata-change-receipt.sociobot.in';
+const DEMO_PREFIX = 'demo:metadata-change-receipt:';
+const SAMPLE_CSV = `filename,date,caption,keywords,rating
+IMG_1042.CR3,2024-05-16,Heron at the west pond,bird; wetlands,5
+IMG_1043.CR3,2024-05-16,Heron lifting off,bird,4
+IMG_1044.CR3,not-a-date,Reeds after rain,landscape,3
+,2024-05-17,Unidentified frame,review,1
+IMG_1046.CR3,2024-05-17,Boardwalk detail,architecture; blue hour,4`;
 
 const escapeHtml = (value: unknown) => String(value ?? '')
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -32,79 +42,121 @@ const escapeHtml = (value: unknown) => String(value ?? '')
 function sharedHeader(): string {
   return `<header class="site-header">
     <a class="wordmark" href="/" aria-label="Metadata Change Receipt home"><img src="/mark.svg" width="40" height="40" alt=""><span>Metadata Change Receipt</span></a>
-    <nav aria-label="Primary"><a href="/#workbench">Workbench</a><a href="/#how-it-works">Method</a><button class="text-button" id="open-license" type="button">Unlock Plus</button></nav>
+    <nav aria-label="Primary"><a href="/demo">Demo</a><a href="/#how-it-works">How it works</a><a href="/#plus">Plus</a><a href="/privacy">Privacy</a></nav>
   </header>`;
 }
 
 function sharedFooter(): string {
   return `<footer>
-    <div><strong>Metadata Change Receipt</strong><p>Evidence around your tools, never a replacement for them.</p></div>
-    <nav aria-label="Legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
-    <p class="fine-print">Runs locally in your browser. Original hero artwork was AI-generated for this product; no third-party assets or tracking.</p>
+    <div><strong>Metadata Change Receipt</strong><p>Plan and verify photo metadata CSV changes in your browser.</p></div>
+    <nav aria-label="Footer"><a href="/demo">Demo</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav>
+    <p class="fine-print">Built by Param Factory · Version 1.1.0 · Original AI-generated artwork · No analytics or tracking.</p>
   </footer>`;
+}
+
+type RouteKind = 'home' | 'demo' | 'privacy' | 'terms' | 'not-found';
+
+const routeMetadata: Record<RouteKind, { title: string; description: string; path: string }> = {
+  home: {
+    title: 'Metadata Change Receipt — plan and prove CSV changes',
+    description: 'Plan and verify batch photo metadata CSV changes locally. Export a signed before-and-after receipt and a clear exception list.',
+    path: '/'
+  },
+  demo: {
+    title: 'Demo — Metadata Change Receipt',
+    description: 'Try a five-row photo metadata change plan in an isolated demo. Review changes, exceptions, verification, and signed receipts.',
+    path: '/demo'
+  },
+  privacy: {
+    title: 'Privacy — Metadata Change Receipt',
+    description: 'Learn which metadata stays in your browser and when license checks contact the Sociobot billing service.',
+    path: '/privacy'
+  },
+  terms: {
+    title: 'Terms — Metadata Change Receipt',
+    description: 'Read the limits, receipt trust model, purchase terms, and responsibilities for Metadata Change Receipt.',
+    path: '/terms'
+  },
+  'not-found': {
+    title: 'Page not found — Metadata Change Receipt',
+    description: 'The requested page does not exist. Return to Metadata Change Receipt or open its isolated demo.',
+    path: '/404'
+  }
+};
+
+function updateRouteMetadata(kind: RouteKind): void {
+  const metadata = routeMetadata[kind];
+  document.title = metadata.title;
+  const canonical = `${PRODUCT_ORIGIN}${metadata.path}`;
+  document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', metadata.description);
+  document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', canonical);
+  for (const [selector, content] of [
+    ['meta[property="og:title"]', metadata.title],
+    ['meta[property="og:description"]', metadata.description],
+    ['meta[property="og:url"]', canonical],
+    ['meta[name="twitter:title"]', metadata.title],
+    ['meta[name="twitter:description"]', metadata.description]
+  ] as const) document.querySelector<HTMLMetaElement>(selector)?.setAttribute('content', content);
 }
 
 function renderLegal(kind: 'privacy' | 'terms'): void {
   const isPrivacy = kind === 'privacy';
-  document.title = `${isPrivacy ? 'Privacy' : 'Terms'} — Metadata Change Receipt`;
+  updateRouteMetadata(kind);
   app.innerHTML = `${sharedHeader()}<main id="main" class="legal-page">
-    <a class="back-link" href="/">← Back to the workbench</a>
-    <p class="eyebrow">Plain-language policy · effective 27 August 2026</p>
-    <h1>${isPrivacy ? 'Your metadata stays on your desk.' : 'A receipt is evidence, not magic.'}</h1>
-    ${isPrivacy ? `<section><h2>What stays local</h2><p>CSV files, filenames, captions, dates, keywords, previews, receipts, and exception lists are processed in your browser. They are not uploaded to us. The app has no analytics, advertising, or tracking.</p></section>
-    <section><h2>What is stored</h2><p>A non-exportable private receipt-signing key is generated and kept in this browser’s IndexedDB when you issue a receipt or export its public verification material. If you paste or return with a purchase license, the token and a once-daily verification result are saved in local storage. Plus users may choose to save transformation recipes locally. Clearing site data removes all of these local records.</p></section>
-    <section><h2>Network requests</h2><p>The app only contacts the Sociobot billing API when you buy or verify a license. Sociobot and its merchant-of-record payment partner process the purchase under their own policies. The offline app shell is cached on your device.</p></section>
-    <section><h2>Questions</h2><p>Contact <a href="mailto:privacy@sociobot.in">privacy@sociobot.in</a>. Do not email sensitive metadata files.</p></section>`
-    : `<section><h2>What the app does</h2><p>The app plans changes against a metadata CSV, compares an optional second export, and signs a receipt with a private key generated in this browser. It does not edit photos, write XMP/IPTC data, inspect pixels, or prove that another tool successfully embedded metadata in an image.</p></section>
-    <section><h2>Receipt trust model</h2><p>A receipt’s signature is independently checkable only with the separately exported public verification material. Save that public file in a location an editor of the receipt cannot replace. The key identifies this browser profile, not a person, organization, legal signer, or trusted timestamp authority. Clearing browser data loses the ability to make further receipts with the same key, but does not prevent verification of old receipts using their saved public material.</p></section>
-    <section><h2>Your responsibility</h2><p>Keep backups, inspect the preview and exception list, and test your external metadata tool on a small set first. Stable, unique identifiers are essential for reliable verification.</p></section>
-    <section><h2>License and purchase</h2><p>The core receipt workflow is free. Plus is a $19 one-time license for one person and includes local saved recipes, custom receipt notes, and JSON evidence export. Sociobot/Dodo is the merchant of record and handles payment and refunds. A refund revokes the license automatically.</p></section>
-    <section><h2>Warranty</h2><p>The software is provided “as is” under the MIT License, without warranty. You retain responsibility for your files and metadata workflow.</p></section>`}
+    <a class="back-link" href="/">← Back to the product</a>
+    <p class="eyebrow">Effective 5 September 2026</p>
+    <h1 tabindex="-1">${isPrivacy ? 'How your metadata is handled' : 'Terms for using Metadata Change Receipt'}</h1>
+    ${isPrivacy ? `<section><h2>Data that stays local</h2><p>Your CSV files are processed in this browser. Filenames, captions, dates, keywords, previews, receipts, and exceptions are not uploaded.</p><p>The app uses no analytics, advertising, or tracking.</p></section>
+    <section><h2>Data saved on your device</h2><p>A private signing key stays in IndexedDB after you issue a real receipt.</p><p>Demo signing keys disappear when the demo page reloads. Demo labels use a separate session-storage key.</p><p>A license token and its daily check result use local storage. Plus recipes also use local storage.</p><p>Clearing this site’s data removes these local records.</p></section>
+    <section><h2>Network requests</h2><p>The app contacts Sociobot only when you buy or verify a license. The payment provider handles checkout under its own policy.</p><p>The app shell is cached on your device for later offline use.</p></section>
+    <section><h2>Privacy questions</h2><p>Email <a href="mailto:privacy@sociobot.in">privacy@sociobot.in</a>. Do not attach sensitive metadata files.</p></section>`
+    : `<section><h2>What the app does</h2><p>The app plans CSV changes, compares a later export, and signs a receipt with a browser key.</p><p>It does not edit photos, write XMP or IPTC data, inspect pixels, or prove that another tool changed an image.</p></section>
+    <section><h2>How receipt signatures work</h2><p>Check a receipt with its separately exported public verification file. Save that file where a receipt editor cannot replace it.</p><p>The key identifies this browser profile. It does not identify a person, organization, legal signer, or trusted time.</p><p>Clearing browser data prevents new receipts with the same key. A saved public verification file can still verify old receipts.</p></section>
+    <section><h2>Your responsibility</h2><p>Keep backups and inspect the preview and exceptions. Test your external metadata tool on a small set first.</p><p>Use a stable, unique identity column for reliable checks.</p></section>
+    <section><h2>Price and license</h2><p>The core receipt workflow is free. Plus costs $19 once for one person.</p><p>Plus includes local recipes, receipt notes, and a separate JSON evidence export.</p><p>Sociobot and Dodo handle payment and refunds. A refund revokes the license.</p></section>
+    <section><h2>Warranty</h2><p>The software is provided “as is” under the MIT License. You remain responsible for your files and metadata work.</p></section>`}
   </main>${sharedFooter()}`;
-  document.querySelector('#open-license')?.addEventListener('click', () => { window.location.href = '/#plus'; });
 }
 
-const path = window.location.pathname.replace(/\/$/, '') || '/';
-if (path === '/privacy' || path === '/terms') {
-  renderLegal(path.slice(1) as 'privacy' | 'terms');
-  registerServiceWorker();
-} else {
-  renderApp();
-}
-
-function renderApp(): void {
-  captureReturnedLicense();
-  document.title = 'Metadata Change Receipt — prove every planned edit';
-  app.innerHTML = `${sharedHeader()}
+function renderApp(demo: boolean): void {
+  isDemoMode = demo;
+  if (!demo) captureReturnedLicense();
+  updateRouteMetadata(demo ? 'demo' : 'home');
+  const demoBanner = demo ? `<aside class="demo-banner" aria-label="Demo controls"><strong>Demo — sample data, nothing is saved</strong><div><button class="text-button" id="reset-demo" type="button">Reset demo</button><a href="/" id="start-real">Start for real</a></div></aside>` : '';
+  const firstScreen = demo ? `<section class="demo-intro" aria-labelledby="demo-title"><p class="eyebrow">Five sample photo records</p><h1 id="demo-title" tabindex="-1">Review a sample metadata receipt</h1><p>The sample already shows four planned caption changes and one missing filename.</p></section>` : `<section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Local CSV planning and proof</p>
+        <h1 id="hero-title" tabindex="-1">Plan and prove metadata CSV changes</h1>
+        <p class="lede">For photographers and small archive managers who need a clear record before and after each batch edit.</p>
+        <div class="hero-actions"><a class="button primary" href="/demo">Try it with sample data</a><a class="button quiet" href="#workbench">Start with your CSV</a></div>
+        <p class="action-note">The demo loads five records and shows four planned edits.</p>
+        <ul class="hero-facts"><li><strong>Private:</strong> your CSV stays in this browser.</li><li><strong>Offline:</strong> revisit after the first load.</li><li><strong>Price:</strong> the core is free. Plus costs $19 once.</li></ul>
+      </div>
+      <figure class="hero-art">
+        <picture><source type="image/avif" srcset="/assets/receipt-worktable-768.avif 768w, /assets/receipt-worktable-1536.avif 1536w" sizes="(max-width: 700px) 768px, 800px"><source type="image/webp" srcset="/assets/receipt-worktable-768.webp 768w, /assets/receipt-worktable-1536.webp 1536w" sizes="(max-width: 700px) 768px, 800px"><img src="/assets/receipt-worktable-1536.jpg" srcset="/assets/receipt-worktable-768.jpg 768w, /assets/receipt-worktable-1536.jpg 1536w" sizes="(max-width: 700px) 768px, 800px" width="1536" height="1024" alt="Cobalt and vermillion paper records linked by a receipt" fetchpriority="high" decoding="async"></picture>
+        <figcaption>A receipt links each old value to its planned replacement.</figcaption>
+      </figure>
+    </section>`;
+  const plusPurchase = demo ? `<aside><p class="price"><strong>$19</strong> one time</p><p>One-person license. No subscription.</p><a class="button primary" href="/" id="demo-buy-real">Start for real</a><small>Leave the demo before buying or restoring a license.</small></aside>` : `<aside><p class="price"><strong>$19</strong> one time</p><p>One-person license. No subscription.</p><a class="button primary" href="${checkoutUrl}">Buy Plus in hosted checkout</a><button class="text-button" id="restore-license" type="button">Restore a license</button><p class="license-status" id="license-status" hidden></p><small>Sociobot and Dodo handle payment and refunds.</small></aside>`;
+  const licenseDialog = demo ? '' : `<dialog id="license-dialog" aria-labelledby="license-title"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close license dialog">×</button><p class="eyebrow">Metadata Change Receipt Plus</p><h2 id="license-title">Restore your license</h2><p>Paste the token from your purchase email. This browser stores it and checks it with Sociobot once a day.</p><label>License token<input id="license-token" type="text" autocomplete="off" spellcheck="false"></label><p id="license-message" class="form-message" aria-live="polite"></p><div class="dialog-actions"><a class="button quiet" href="${checkoutUrl}">Buy for $19 in hosted checkout</a><button class="button primary" id="verify-license" type="button">Verify license</button></div></form></dialog>`;
+  app.innerHTML = `${sharedHeader()}${demoBanner}
   <div class="offline-banner" id="offline-banner" role="status" hidden><strong>Offline:</strong> the workbench still works. License checks will resume when you reconnect.</div>
   <aside class="update-toast" id="update-toast" role="status" hidden><p>An updated offline workbench is ready.</p><button class="button primary" id="apply-update" type="button">Reload update</button></aside>
   <main id="main">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow">Local metadata audit desk · nothing uploaded</p>
-        <h1 id="hero-title">Every edit.<br><em>Receipted.</em></h1>
-        <p class="lede">Plan batch date, caption, keyword, and IPTC changes from a CSV. See every before and after, catch exceptions, then take a cryptographically signed receipt back to your archive.</p>
-        <div class="hero-actions"><a class="button primary" href="#workbench">Start with a CSV</a><button class="button quiet" id="load-sample" type="button">Try the sample</button></div>
-        <p class="privacy-note"><span aria-hidden="true">●</span> Your filenames and location data never leave this browser.</p>
-      </div>
-      <figure class="hero-art">
-        <picture><source type="image/avif" srcset="/assets/receipt-worktable-768.avif 768w, /assets/receipt-worktable-1536.avif 1536w" sizes="(max-width: 700px) 768px, 800px"><source type="image/webp" srcset="/assets/receipt-worktable-768.webp 768w, /assets/receipt-worktable-1536.webp 1536w" sizes="(max-width: 700px) 768px, 800px"><img src="/assets/receipt-worktable-1536.jpg" srcset="/assets/receipt-worktable-768.jpg 768w, /assets/receipt-worktable-1536.jpg 1536w" sizes="(max-width: 700px) 768px, 800px" width="1536" height="1024" alt="A cobalt and vermillion risograph collage of contact sheets connected by a long paper receipt" fetchpriority="high" decoding="async"></picture>
-        <figcaption>From “I think it changed” to a row-by-row record.</figcaption>
-      </figure>
-    </section>
+    ${firstScreen}
 
     <section class="trust-strip" aria-label="Product boundaries">
       <p><strong>Reads</strong> exported CSV</p><span aria-hidden="true">→</span><p><strong>Plans</strong> field changes</p><span aria-hidden="true">→</span><p><strong>Checks</strong> a second export</p><span aria-hidden="true">→</span><p><strong>Writes</strong> receipts, not image files</p>
     </section>
 
     <section class="workbench" id="workbench" aria-labelledby="workbench-title">
-      <div class="section-intro"><p class="eyebrow">The workbench</p><h2 id="workbench-title">Build the evidence trail</h2><p>Nothing is changed until you export a planned CSV. Your original file remains untouched.</p></div>
+      <div class="section-intro"><p class="eyebrow">CSV workbench</p><h2 id="workbench-title">Plan your metadata changes</h2><p>Your exported file is never changed. The app creates separate downloads.</p></div>
 
       <article class="workflow-step current" id="load-step">
         <div class="step-number" aria-hidden="true">01</div><div class="step-body">
-          <div class="step-heading"><div><h3>Load the source export</h3><p>Use a CSV exported from Lightroom, ExifTool, your DAM, or a spreadsheet.</p></div><span class="stamp" id="load-stamp">Waiting</span></div>
+          <div class="step-heading"><div><h3>Load the source CSV</h3><p>Use an export from Lightroom, ExifTool, your archive tool, or a spreadsheet.</p></div><span class="stamp" id="load-stamp">Waiting</span></div>
           <label class="drop-zone" id="drop-zone" for="csv-file">
-            <span class="drop-icon" aria-hidden="true">⇩</span><strong>Drop a metadata CSV here</strong><span>or choose a file · up to 25 MB · processed locally</span>
+            <span class="drop-icon" aria-hidden="true">⇩</span><strong>Drop a metadata CSV here</strong><span>or choose a file · read in this browser</span>
             <input id="csv-file" type="file" accept=".csv,text/csv">
           </label>
           <div class="file-summary" id="file-summary" hidden></div>
@@ -134,17 +186,17 @@ function renderApp(): void {
 
       <article class="workflow-step" id="receipt-step" aria-disabled="true">
         <div class="step-number" aria-hidden="true">03</div><div class="step-body">
-          <div class="step-heading"><div><h3>Inspect and issue the receipt</h3><p>Changed rows appear once. Exceptions stay separate and actionable.</p></div><span class="stamp" id="receipt-stamp">Locked</span></div>
-          <div id="result-empty" class="result-empty"><span aria-hidden="true">◎</span><p>Preview a rule to open the receipt desk.</p></div>
+          <div class="step-heading"><div><h3>Review and issue the receipt</h3><p>Each changed row appears once. Exceptions stay in a separate list.</p></div><span class="stamp" id="receipt-stamp">Locked</span></div>
+          <div id="result-empty" class="result-empty"><span aria-hidden="true">◎</span><p>Preview a rule to see the receipt.</p></div>
           <div id="results" hidden>
             <div class="stats" id="stats"></div>
             <div class="notice boundary-notice"><strong>CSV proof has a boundary.</strong> This records expected values and can compare a second CSV. It does not prove pixels or embedded XMP/IPTC were written.</div>
             <div class="table-heading"><div><h4>Before / after ledger</h4><p id="preview-caption"></p></div><button class="text-button" id="download-changes" type="button">Download changes CSV</button></div>
             <div class="table-scroll" tabindex="0" aria-label="Scrollable before and after change preview"><table><thead><tr><th>Row</th><th>Identity</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody id="changes-body"></tbody></table></div>
             <details class="exceptions-panel" id="exceptions-panel"><summary><span>Exception list</span><strong id="exception-count">0</strong></summary><div id="exceptions-content"></div></details>
-            <section class="verify-box" aria-labelledby="verify-title"><div><p class="eyebrow">Optional but recommended</p><h4 id="verify-title">Check the post-edit export</h4><p>After running your metadata tool, export a fresh CSV with the same identity and target columns. We’ll compare every planned change.</p></div><label class="button quiet" for="verify-file">Choose verification CSV<input id="verify-file" type="file" accept=".csv,text/csv"></label><div id="verify-status" aria-live="polite"></div></section>
+            <section class="verify-box" aria-labelledby="verify-title"><div><p class="eyebrow">Optional check</p><h4 id="verify-title">Check the later export</h4><p>After running your metadata tool, export a fresh CSV. Include the same identity and target columns. The app compares every planned change.</p></div><label class="button quiet" for="verify-file">Choose verification CSV<input id="verify-file" type="file" accept=".csv,text/csv"></label><div id="verify-status" aria-live="polite"></div></section>
             <label class="receipt-note" id="note-wrap" hidden>Receipt note <textarea id="receipt-note" rows="2" maxlength="300" placeholder="Job number, operator, or handoff note"></textarea><small>Plus feature. Stored only inside exported receipts.</small></label>
-            <section class="signature-box" aria-labelledby="signature-title"><div><p class="eyebrow">Independent verification</p><h4 id="signature-title">Keep the public key apart from the receipt.</h4><p>This browser generates a private P-256 signing key on first use. A signed <code>.receipt.json</code> is downloaded with the printable receipt. Export its public verification material once and save it separately; anyone can use both files here to check whether the receipt was changed. The key proves control of this browser profile, not a named identity or date.</p></div><div class="signature-actions"><button class="button quiet" id="download-verification-key" type="button">Download public verification material</button><p class="muted" id="signing-key-status" aria-live="polite"></p></div><div class="verify-receipt"><label>Signed receipt JSON<input id="signed-receipt-file" type="file" accept="application/json,.json"></label><label>Public verification JSON<input id="verification-material-file" type="file" accept="application/json,.json"></label><button class="button quiet" id="verify-receipt" type="button">Verify receipt signature</button><p id="receipt-signature-status" aria-live="polite"></p></div></section>
+            <section class="signature-box" aria-labelledby="signature-title"><div><p class="eyebrow">Receipt signature</p><h4 id="signature-title">Save the public verification file separately</h4><p>This browser creates a private P-256 signing key when you first sign. The key stays in this browser.</p><p>A signed receipt JSON downloads with the printable receipt. Save the public verification file somewhere else.</p><p>Anyone with both JSON files can detect receipt changes. The key identifies this browser profile, not a person or trusted time.</p></div><div class="signature-actions"><button class="button quiet" id="download-verification-key" type="button">Download public verification file</button><p class="muted" id="signing-key-status" aria-live="polite"></p></div><div class="verify-receipt"><label>Signed receipt JSON<input id="signed-receipt-file" type="file" accept="application/json,.json"></label><label>Public verification file<input id="verification-material-file" type="file" accept="application/json,.json"></label><button class="button quiet" id="verify-receipt" type="button">Verify receipt signature</button><p id="receipt-signature-status" aria-live="polite"></p></div></section>
             <div class="issue-bar"><div><strong>Ready to issue</strong><span id="issue-summary"></span></div><div><button class="button quiet" id="download-planned" type="button">Export planned CSV</button><button class="button quiet plus-action" id="download-json" type="button">JSON evidence <span>Plus</span></button><button class="button primary" id="issue-receipt" type="button">Issue signed receipt</button></div></div>
           </div>
         </div>
@@ -153,18 +205,68 @@ function renderApp(): void {
     </section>
 
     <section class="method" id="how-it-works" aria-labelledby="method-title">
-      <div><p class="eyebrow">Independent by design</p><h2 id="method-title">A paper trail your catalog doesn’t own.</h2></div>
-      <ol><li><span>1</span><div><h3>Export</h3><p>Bring a plain CSV from the system you already use. No proprietary catalog connection.</p></div></li><li><span>2</span><div><h3>Rehearse</h3><p>Apply one explicit rule and see the exact set before running a risky batch job.</p></div></li><li><span>3</span><div><h3>Reconcile</h3><p>Compare a new export, isolate every mismatch, and sign the exact record with your browser-held key.</p></div></li></ol>
+      <div><p class="eyebrow">Three steps</p><h2 id="method-title">How the CSV receipt works</h2></div>
+      <ol><li><span>1</span><div><h3>Export a CSV</h3><p>Bring a plain CSV from the system you already use.</p></div></li><li><span>2</span><div><h3>Plan one rule</h3><p>See every affected value before running the batch job.</p></div></li><li><span>3</span><div><h3>Check and sign</h3><p>Compare a later export, list each mismatch, and sign the record.</p></div></li></ol>
     </section>
 
-    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">For repeat archive work</p><h2 id="plus-title">Keep the core free. Make the routine faster.</h2><p>Plus adds locally saved recipes, custom receipt notes, and an extra plain evidence-payload export. Signed receipt and public-key verification exports remain free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the unsigned evidence payload for another system</li></ul></div><aside><p class="price"><strong>$19</strong> one time</p><p>One-person license · no subscription</p><a class="button primary" href="${checkoutUrl}">Buy Plus securely</a><button class="text-button" id="restore-license" type="button">Have a license? Restore it</button><p class="license-status" id="license-status" hidden></p><small>Sociobot/Dodo is merchant of record. Refunds are handled there.</small></aside></section>
+    <section class="boundaries" aria-labelledby="boundaries-title"><p class="eyebrow">Clear limits</p><h2 id="boundaries-title">What this tool does not do</h2><ul><li>It does not edit photos or write embedded XMP or IPTC data.</li><li>A CSV comparison proves records, not pixels or saved image files.</li><li>It does not need a cloud photo account.</li></ul></section>
+
+    <section class="plus-section" id="plus" aria-labelledby="plus-title"><div><p class="eyebrow">Optional paid features</p><h2 id="plus-title">Plus pricing and features</h2><p>Plus saves reusable recipes on this browser, adds receipt notes, and exports a separate JSON evidence file.</p><p>Signed receipts, public verification files, planned CSV files, and exception lists remain free.</p><ul><li>Save reusable field rules on this device</li><li>Add operator or job notes to receipts</li><li>Export the unsigned evidence payload for another system</li></ul></div>${plusPurchase}</section>
   </main>
   ${sharedFooter()}
-  <dialog id="license-dialog" aria-labelledby="license-title"><form method="dialog"><button class="dialog-close" value="cancel" aria-label="Close license dialog">×</button><p class="eyebrow">Metadata Change Receipt Plus</p><h2 id="license-title">Restore your license</h2><p>Paste the token from your purchase email. It is stored only in this browser and checked with Sociobot at most once a day.</p><label>License token<input id="license-token" type="text" autocomplete="off" spellcheck="false"></label><p id="license-message" class="form-message" aria-live="polite"></p><div class="dialog-actions"><a class="button quiet" href="${checkoutUrl}">Buy for $19</a><button class="button primary" id="verify-license" type="button">Verify and unlock</button></div></form></dialog>`;
+  ${licenseDialog}`;
 
   bindApp();
-  registerServiceWorker();
+  if (demo) startDemo();
 }
+
+function renderNotFound(): void {
+  isDemoMode = false;
+  updateRouteMetadata('not-found');
+  app.innerHTML = `${sharedHeader()}<main id="main" class="not-found-page"><p class="error-code">404</p><h1 tabindex="-1">This page does not exist</h1><p>Check the address, return to the product, or open the sample demo.</p><div class="hero-actions"><a class="button primary" href="/">Return to the product</a><a class="button quiet" href="/demo">Try the sample demo</a></div></main>${sharedFooter()}`;
+}
+
+function currentPath(): string {
+  return window.location.pathname.replace(/\/$/, '') || '/';
+}
+
+function renderRoute(moveFocus = false): void {
+  sourceTable = null;
+  activePlan = null;
+  verification = null;
+  licenseState = { token: '', unlocked: false, checking: false, reason: '' };
+  const path = currentPath();
+  if (path === '/privacy' || path === '/terms') renderLegal(path.slice(1) as 'privacy' | 'terms');
+  else if (path === '/') renderApp(false);
+  else if (path === '/demo') renderApp(true);
+  else renderNotFound();
+  if (moveFocus) {
+    const heading = document.querySelector<HTMLElement>('h1');
+    heading?.focus({ preventScroll: true });
+    const status = document.querySelector<HTMLElement>('#route-status');
+    if (status) status.textContent = document.title;
+  }
+  if (window.location.hash) requestAnimationFrame(() => document.querySelector(window.location.hash)?.scrollIntoView());
+}
+
+function installNavigation(): void {
+  document.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = (event.target as Element).closest<HTMLAnchorElement>('a[href]');
+    if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
+    const url = new URL(anchor.href, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+    event.preventDefault();
+    history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    renderRoute(true);
+  });
+  window.addEventListener('popstate', () => renderRoute(true));
+}
+
+renderRoute();
+installNavigation();
+registerServiceWorker();
 
 function byId<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -181,7 +283,6 @@ function bindApp(): void {
   for (const eventName of ['dragenter', 'dragover']) dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
   for (const eventName of ['dragleave', 'drop']) dropZone.addEventListener(eventName, (event) => { event.preventDefault(); dropZone.classList.remove('dragging'); });
   dropZone.addEventListener('drop', (event) => { const file = (event as DragEvent).dataTransfer?.files[0]; if (file) void loadSource(file); });
-  byId('load-sample').addEventListener('click', loadSample);
   byId<HTMLSelectElement>('operation').addEventListener('change', updateOperationFields);
   byId<HTMLSelectElement>('condition-field').addEventListener('change', () => { byId('condition-wrap').hidden = !byId<HTMLSelectElement>('condition-field').value; });
   byId<HTMLFormElement>('rule-form').addEventListener('submit', (event) => { event.preventDefault(); buildPreview(); });
@@ -189,21 +290,23 @@ function bindApp(): void {
   byId('download-changes').addEventListener('click', () => activePlan && downloadText('metadata-changes.csv', changesCsv(activePlan.changes), 'text/csv'));
   byId('download-planned').addEventListener('click', () => activePlan && downloadText('planned-metadata.csv', serializeCsv(activePlan.plannedTable.headers, activePlan.plannedTable.rows), 'text/csv'));
   byId('issue-receipt').addEventListener('click', () => void issueReceipt());
-  byId('download-json').addEventListener('click', () => licenseState.unlocked ? downloadEvidencePayload() : openLicenseDialog());
+  byId('download-json').addEventListener('click', () => licenseState.unlocked ? downloadEvidencePayload() : isDemoMode ? announce('Start for real to use Plus features.') : openLicenseDialog());
   byId('download-verification-key').addEventListener('click', () => void downloadVerificationMaterial());
   byId('verify-receipt').addEventListener('click', () => void verifyReceiptFiles());
-  byId('save-recipe').addEventListener('click', () => licenseState.unlocked ? saveRecipe() : openLicenseDialog());
+  byId('save-recipe').addEventListener('click', () => licenseState.unlocked ? saveRecipe() : isDemoMode ? announce('Start for real to save recipes with Plus.') : openLicenseDialog());
   byId<HTMLSelectElement>('saved-recipes').addEventListener('change', loadRecipe);
-  byId('open-license').addEventListener('click', openLicenseDialog);
-  byId('restore-license').addEventListener('click', openLicenseDialog);
-  byId('verify-license').addEventListener('click', () => void restoreLicense());
+  document.getElementById('restore-license')?.addEventListener('click', openLicenseDialog);
+  document.getElementById('verify-license')?.addEventListener('click', () => void restoreLicense());
+  document.getElementById('reset-demo')?.addEventListener('click', resetDemo);
+  document.getElementById('start-real')?.addEventListener('click', clearDemoStorage);
+  document.getElementById('demo-buy-real')?.addEventListener('click', clearDemoStorage);
   window.addEventListener('online', updateOnlineState);
   window.addEventListener('offline', updateOnlineState);
   updateOnlineState();
   updateOperationFields();
-  licenseState = getLicenseState();
+  licenseState = isDemoMode ? { token: '', unlocked: false, checking: false, reason: '' } : getLicenseState();
   updateLicenseUi();
-  void verifyLicense().then((state) => { licenseState = state; updateLicenseUi(); });
+  if (!isDemoMode) void verifyLicense().then((state) => { licenseState = state; updateLicenseUi(); });
 }
 
 async function loadSource(file: File): Promise<void> {
@@ -217,9 +320,36 @@ async function loadSource(file: File): Promise<void> {
 }
 
 function loadSample(): void {
-  const csv = `filename,date,caption,keywords,rating\nIMG_1042.CR3,2024-05-16,Heron at the west pond,bird; wetlands,5\nIMG_1043.CR3,2024-05-16,Heron lifting off,bird,4\nIMG_1044.CR3,not-a-date,Reeds after rain,landscape,3\n,2024-05-17,Unidentified frame,review,1\nIMG_1046.CR3,2024-05-17,Boardwalk detail,architecture; blue hour,4`;
-  acceptSource(parseCsv(csv, 'sample-bird-survey.csv'));
-  location.hash = 'workbench';
+  acceptSource(parseCsv(SAMPLE_CSV, 'sample-bird-survey.csv'));
+}
+
+function startDemo(): void {
+  sessionStorage.setItem(`${DEMO_PREFIX}active`, '1');
+  loadSample();
+  byId<HTMLSelectElement>('target-field').value = 'caption';
+  byId<HTMLSelectElement>('operation').value = 'set';
+  byId<HTMLInputElement>('rule-value').value = 'Archive review complete';
+  updateOperationFields();
+  buildPreview();
+  requestAnimationFrame(() => byId('results').scrollIntoView({ block: 'start' }));
+}
+
+function clearDemoStorage(): void {
+  for (const key of Object.keys(sessionStorage)) if (key.startsWith(DEMO_PREFIX)) sessionStorage.removeItem(key);
+  resetDemoSigningKey();
+}
+
+function resetDemo(): void {
+  clearDemoStorage();
+  sessionStorage.setItem(`${DEMO_PREFIX}active`, '1');
+  resetDemoSigningKey();
+  loadSample();
+  byId<HTMLSelectElement>('target-field').value = 'caption';
+  byId<HTMLSelectElement>('operation').value = 'set';
+  byId<HTMLInputElement>('rule-value').value = 'Archive review complete';
+  updateOperationFields();
+  buildPreview();
+  announce('Demo reset to five sample records, four changes, and one exception.');
 }
 
 function acceptSource(table: CsvTable): void {
@@ -328,17 +458,18 @@ function makePayload(): ReceiptPayload {
 async function issueReceipt(): Promise<void> {
   if (!activePlan) return;
   const button = byId<HTMLButtonElement>('issue-receipt');
-  const original = button.textContent ?? ''; button.disabled = true; button.textContent = 'Sealing…';
+  const original = button.textContent ?? ''; button.disabled = true; button.textContent = 'Signing…';
   try {
     const payload = makePayload();
-    const { receipt, material } = await signReceipt(payload);
+    const { receipt, material } = await signReceipt(payload, isDemoMode);
+    if (isDemoMode) sessionStorage.setItem(`${DEMO_PREFIX}key-id`, material.keyId);
     const rows = payload.changes.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.before)}</td><td>${escapeHtml(entry.after)}</td></tr>`).join('');
     const exceptionRows = payload.exceptions.map((entry) => `<tr><td>${entry.rowNumber}</td><td>${escapeHtml(entry.identity)}</td><td>${escapeHtml(entry.field)}</td><td>${escapeHtml(entry.reason)}</td></tr>`).join('');
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Metadata change receipt — ${escapeHtml(payload.sourceName)}</title><style>body{font:16px/1.5 Arial,sans-serif;color:#1e2522;max-width:1100px;margin:40px auto;padding:0 24px}h1{font:48px Georgia,serif;margin-bottom:8px}.seal{border:3px solid #1646a0;padding:16px;word-break:break-all;background:#f4ead2}table{width:100%;border-collapse:collapse;margin:24px 0}th,td{text-align:left;border-bottom:1px solid #777;padding:8px;vertical-align:top}th{background:#f4ead2}.warning{border-left:6px solid #c53d2d;padding:12px 16px;background:#fff4eb}@media print{body{margin:0}.no-print{display:none}thead{display:table-header-group}}</style></head><body><p>METADATA CHANGE RECEIPT · VERSION 2</p><h1>Before / after receipt</h1><p><strong>Source:</strong> ${escapeHtml(payload.sourceName)} · ${payload.sourceRows.toLocaleString()} rows<br><strong>Issued:</strong> ${escapeHtml(payload.issuedAt)}<br><strong>Rule:</strong> ${escapeHtml(describeRule(payload.rule))}</p>${payload.note ? `<p><strong>Note:</strong> ${escapeHtml(payload.note)}</p>` : ''}<div class="seal"><strong>Cryptographic signature</strong><br><code>ECDSA P-256 / SHA-256 · key ID ${escapeHtml(receipt.keyId)}</code><p>This printable rendering is accompanied by <code>metadata-change-receipt.receipt.json</code>, which contains the signed evidence. Verify that file using the separately saved <code>metadata-change-receipt.public-key.json</code>. A valid signature detects edits made without this browser profile’s private key; it is not proof of a person, organization, or trusted timestamp.</p></div><p class="warning"><strong>Boundary:</strong> This receipt records expected CSV values${payload.verification ? ` and comparison with ${escapeHtml(payload.verification.checkedSourceName)}` : ''}. It does not prove pixels or embedded XMP/IPTC were written.</p><h2>Changes (${payload.changes.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No changes.</td></tr>'}</tbody></table><h2>Exceptions (${payload.exceptions.length.toLocaleString()})</h2><table><thead><tr><th>Source row</th><th>Identity</th><th>Field</th><th>Reason</th></tr></thead><tbody>${exceptionRows || '<tr><td colspan="4">No exceptions.</td></tr>'}</tbody></table><p class="no-print">Keep the printable file with its signed JSON, source CSV, changes CSV, and exceptions CSV.</p></body></html>`;
     downloadText('metadata-change-receipt.html', html, 'text/html');
     downloadText('metadata-change-receipt.receipt.json', JSON.stringify(receipt, null, 2), 'application/json');
-    byId('signing-key-status').textContent = `Signed with local key ${material.keyId.slice(0, 18)}… Save its public material separately.`;
-    announce(`Signed receipt and its verification JSON downloaded with key ${receipt.keyId.slice(0, 12)}…`);
+    byId('signing-key-status').textContent = `Signed with local key ${material.keyId.slice(0, 18)}… Save its public verification file separately.`;
+    announce(`Printable and signed receipt files downloaded with key ${receipt.keyId.slice(0, 12)}…`);
   } catch (error) {
     announce(`Could not issue a signed receipt: ${error instanceof Error ? error.message : 'Unknown signing error.'}`);
   } finally { button.disabled = false; button.textContent = original; }
@@ -355,12 +486,13 @@ async function downloadVerificationMaterial(): Promise<void> {
   const button = byId<HTMLButtonElement>('download-verification-key');
   const original = button.textContent ?? ''; button.disabled = true; button.textContent = 'Preparing…';
   try {
-    const material = await getVerificationMaterial();
+    const material = await getVerificationMaterial(isDemoMode);
+    if (isDemoMode) sessionStorage.setItem(`${DEMO_PREFIX}key-id`, material.keyId);
     downloadText('metadata-change-receipt.public-key.json', JSON.stringify(material, null, 2), 'application/json');
     byId('signing-key-status').textContent = `Public material exported. Key ID ${material.keyId}. Store it outside the receipt folder.`;
-    announce('Public verification material downloaded.');
+    announce('Public verification file downloaded.');
   } catch (error) {
-    byId('signing-key-status').textContent = error instanceof Error ? error.message : 'Could not create public verification material.';
+    byId('signing-key-status').textContent = error instanceof Error ? error.message : 'Could not create the public verification file.';
   } finally { button.disabled = false; button.textContent = original; }
 }
 
@@ -368,7 +500,7 @@ async function verifyReceiptFiles(): Promise<void> {
   const status = byId('receipt-signature-status');
   const receiptFile = byId<HTMLInputElement>('signed-receipt-file').files?.[0];
   const materialFile = byId<HTMLInputElement>('verification-material-file').files?.[0];
-  if (!receiptFile || !materialFile) { status.textContent = 'Choose both the signed receipt JSON and its separately saved public verification JSON.'; status.className = 'error-message'; return; }
+  if (!receiptFile || !materialFile) { status.textContent = 'Choose both the signed receipt JSON and its separately saved public verification file.'; status.className = 'error-message'; return; }
   status.textContent = 'Checking the signature…'; status.className = 'muted';
   try {
     const receipt = JSON.parse(await receiptFile.text()) as SignedReceipt;

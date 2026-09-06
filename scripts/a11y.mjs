@@ -8,9 +8,8 @@ const context = await browser.newContext({ viewport: { width: 390, height: 844 }
 const page = await context.newPage();
 const reports = [];
 
-for (const path of ['/', '/privacy', '/terms']) {
+for (const path of ['/', '/demo', '/privacy', '/terms', '/404.html']) {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
-  if (path === '/') await page.getByRole('button', { name: 'Try the sample' }).click();
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   reports.push({ path, violations: results.violations });
 }

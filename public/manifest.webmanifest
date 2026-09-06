@@ -1,8 +1,8 @@
 {
   "name": "Metadata Change Receipt",
   "short_name": "Change Receipt",
-  "description": "Local-first evidence for batch photo metadata edits.",
-  "start_url": "/?source=pwa-v2",
+  "description": "Plan and verify photo metadata CSV changes, then export a signed receipt.",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#f4ead2",
   "theme_color": "#f4ead2",

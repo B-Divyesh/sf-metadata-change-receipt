@@ -11,8 +11,8 @@ const consoleErrors = [];
 page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
 page.on('pageerror', (error) => consoleErrors.push(String(error)));
 
-await page.goto(baseUrl, { waitUntil: 'networkidle' });
-await page.getByRole('button', { name: 'Try the sample' }).click();
+await page.goto(`${baseUrl}/demo`, { waitUntil: 'networkidle' });
+await page.getByText('Demo — sample data, nothing is saved').waitFor();
 await page.locator('#target-field').selectOption('caption');
 await page.locator('#operation').selectOption('set');
 await page.locator('#rule-value').fill('Audited caption');
@@ -45,7 +45,7 @@ const signedReceipt = JSON.parse(signedReceiptText);
 if (signedReceipt.format !== 'metadata-change-receipt/v2' || !signedReceipt.signature || !signedReceipt.keyId) throw new Error('Signed receipt JSON has no verifiable signature envelope.');
 
 const keyDownload = page.waitForEvent('download');
-await page.getByRole('button', { name: 'Download public verification material' }).click();
+await page.getByRole('button', { name: 'Download public verification file' }).click();
 const publicKey = await keyDownload;
 const publicKeyPath = await publicKey.path();
 if (!publicKeyPath) throw new Error('Public verification material did not download.');
@@ -53,14 +53,14 @@ const publicKeyText = await readFile(publicKeyPath, 'utf8');
 await page.locator('#signed-receipt-file').setInputFiles({ name: 'receipt.json', mimeType: 'application/json', buffer: Buffer.from(signedReceiptText) });
 await page.locator('#verification-material-file').setInputFiles({ name: 'public-key.json', mimeType: 'application/json', buffer: Buffer.from(publicKeyText) });
 await page.getByRole('button', { name: 'Verify receipt signature' }).click();
-await page.getByText('Signature is valid for this exact receipt payload and public key.').waitFor();
+await page.getByText('Signature is valid for this exact receipt and public verification file.').waitFor();
 signedReceipt.payload.changes[0].after = 'tampered after signing';
 await page.locator('#signed-receipt-file').setInputFiles({ name: 'tampered-receipt.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(signedReceipt)) });
 await page.getByRole('button', { name: 'Verify receipt signature' }).click();
 await page.locator('#receipt-signature-status').getByText(/Signature mismatch/).waitFor();
 
 const exceptionsDownload = page.waitForEvent('download');
-await page.getByText('Exception list').click();
+await page.getByText('Exception list', { exact: true }).click();
 await page.getByRole('button', { name: /Download all exceptions CSV/ }).click();
 const exceptions = await exceptionsDownload;
 const exceptionsPath = await exceptions.path();
@@ -77,7 +77,7 @@ await page.route('https://api.sociobot.in/api/v1/products/metadata-change-receip
   body: JSON.stringify({ valid: true, reason: 'ok', expires_at: null })
 }));
 await page.goto(`${baseUrl}/?license=test-license-token`, { waitUntil: 'networkidle' });
-await page.getByRole('button', { name: 'Plus unlocked' }).waitFor();
+await page.waitForFunction(() => document.body.classList.contains('is-plus'));
 if (page.url().includes('license=')) throw new Error('Returned license token was not stripped from the URL.');
 const storedLicense = await page.evaluate(() => localStorage.getItem('sb_license:metadata-change-receipt'));
 if (storedLicense !== 'test-license-token') throw new Error('Returned license token was not stored with the product key.');
@@ -93,7 +93,7 @@ coldPage.on('requestfailed', (request) => {
   const errorText = request.failure()?.errorText ?? 'failed';
   if (errorText !== 'net::ERR_ABORTED') coldErrors.push(`${request.url()} ${errorText}`);
 });
-await coldPage.goto(baseUrl, { waitUntil: 'networkidle' });
+await coldPage.goto(`${baseUrl}/demo`, { waitUntil: 'networkidle' });
 await coldPage.evaluate(() => navigator.serviceWorker.ready);
 await coldPage.waitForFunction(() => navigator.serviceWorker.controller !== null);
 await coldPage.reload({ waitUntil: 'networkidle' });
@@ -126,7 +126,7 @@ const offlineShell = await coldPage.evaluate(async () => {
 if (offlineShell.some((asset) => asset.status !== 200)) throw new Error(`Offline cache miss for an emitted shell asset: ${JSON.stringify(offlineShell)}`);
 await coldPage.reload({ waitUntil: 'domcontentloaded' });
 await coldPage.waitForTimeout(1000);
-const offlineH1 = await coldPage.getByRole('heading', { level: 1, name: /Every edit/i }).count();
+const offlineH1 = await coldPage.getByRole('heading', { level: 1, name: /Review a sample metadata receipt/i }).count();
 if (offlineH1 !== 1 || coldErrors.length) throw new Error(`Cold-cache offline reload failed: controller=${JSON.stringify(controllerState)}; h1=${offlineH1}; errors=${coldErrors.join('; ')}; body=${(await coldPage.locator('body').innerText()).slice(0, 300)}`);
 await coldContext.close();
 await coldBrowser.close();

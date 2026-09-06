@@ -1,8 +1,4 @@
 {
-  "navigationFallback": {
-    "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/*.{css,js,svg,webp,png,json,webmanifest}"]
-  },
   "globalHeaders": {
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; connect-src 'self' https://api.sociobot.in; object-src 'none'; base-uri 'self'; form-action 'self' https://api.sociobot.in; frame-ancestors 'none'",
     "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -10,9 +6,18 @@
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
   },
   "routes": [
+    { "route": "/demo", "rewrite": "/demo.html" },
+    { "route": "/demo/", "rewrite": "/demo.html" },
+    { "route": "/privacy", "rewrite": "/privacy.html" },
+    { "route": "/privacy/", "rewrite": "/privacy.html" },
+    { "route": "/terms", "rewrite": "/terms.html" },
+    { "route": "/terms/", "rewrite": "/terms.html" },
     {
       "route": "/assets/*",
       "headers": { "Cache-Control": "public, max-age=31536000, immutable" }
     }
-  ]
+  ],
+  "responseOverrides": {
+    "404": { "rewrite": "/404.html" }
+  }
 }

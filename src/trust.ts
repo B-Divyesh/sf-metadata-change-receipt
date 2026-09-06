@@ -4,6 +4,7 @@ const DB_NAME = 'metadata-change-receipt-keys';
 const STORE_NAME = 'signing-keys';
 const ACTIVE_KEY = 'active-v1';
 const ALGORITHM = 'ECDSA-P256-SHA256';
+let demoSigningKey: StoredSigningKey | null = null;
 
 export interface VerificationMaterial {
   format: 'metadata-change-receipt-public-key/v1';
@@ -111,11 +112,15 @@ export async function createVerificationMaterial(publicKey: CryptoKey, createdAt
     keyId: await keyIdFor(publicKeyJwk),
     createdAt,
     publicKeyJwk,
-    provenance: 'Generated locally by this browser profile for Metadata Change Receipt. This key proves that a receipt was signed by the browser profile holding its private key. It is not a personal, organizational, legal, or timestamp identity claim. Save this public material separately from receipts before relying on it for verification.'
+    provenance: 'Generated locally by this browser profile for Metadata Change Receipt. This key proves that a receipt was signed by the browser profile holding its private key. It is not a personal, organizational, legal, or timestamp identity claim. Save this public verification file separately from receipts before relying on it.'
   };
 }
 
-async function activeSigningKey(): Promise<StoredSigningKey> {
+async function activeSigningKey(demo = false): Promise<StoredSigningKey> {
+  if (demo) {
+    demoSigningKey ??= await createStoredKey();
+    return demoSigningKey;
+  }
   const existing = await readStoredKey();
   if (existing?.keyPair?.privateKey && existing.material) return existing;
   const created = await createStoredKey();
@@ -123,12 +128,16 @@ async function activeSigningKey(): Promise<StoredSigningKey> {
   return created;
 }
 
-export async function getVerificationMaterial(): Promise<VerificationMaterial> {
-  return (await activeSigningKey()).material;
+export function resetDemoSigningKey(): void {
+  demoSigningKey = null;
 }
 
-export async function signReceipt(payload: ReceiptPayload): Promise<{ receipt: SignedReceipt; material: VerificationMaterial }> {
-  const stored = await activeSigningKey();
+export async function getVerificationMaterial(demo = false): Promise<VerificationMaterial> {
+  return (await activeSigningKey(demo)).material;
+}
+
+export async function signReceipt(payload: ReceiptPayload, demo = false): Promise<{ receipt: SignedReceipt; material: VerificationMaterial }> {
+  const stored = await activeSigningKey(demo);
   return { material: stored.material, receipt: await signReceiptWithKey(payload, stored.keyPair.privateKey, stored.material) };
 }
 
@@ -146,14 +155,14 @@ export async function signReceiptWithKey(payload: ReceiptPayload, privateKey: Cr
 export async function verifySignedReceipt(receipt: SignedReceipt, material: VerificationMaterial): Promise<{ valid: boolean; reason: string }> {
   try {
     if (receipt?.format !== 'metadata-change-receipt/v2' || receipt.algorithm !== ALGORITHM) return { valid: false, reason: 'Unsupported receipt format or algorithm.' };
-    if (material?.format !== 'metadata-change-receipt-public-key/v1' || material.algorithm !== ALGORITHM) return { valid: false, reason: 'Unsupported public verification material.' };
+    if (material?.format !== 'metadata-change-receipt-public-key/v1' || material.algorithm !== ALGORITHM) return { valid: false, reason: 'Unsupported public verification file.' };
     const publicKey = normalPublicJwk(material.publicKeyJwk);
     const calculatedKeyId = await keyIdFor(publicKey);
-    if (material.keyId !== calculatedKeyId || receipt.keyId !== calculatedKeyId) return { valid: false, reason: 'The receipt and independently supplied public key do not match.' };
+    if (material.keyId !== calculatedKeyId || receipt.keyId !== calculatedKeyId) return { valid: false, reason: 'The receipt and independently supplied public verification file do not match.' };
     const key = await requireWebCrypto().importKey('jwk', publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
     const signature = base64UrlToBytes(receipt.signature);
     const valid = await requireWebCrypto().verify({ name: 'ECDSA', hash: 'SHA-256' }, key, signature as unknown as BufferSource, new TextEncoder().encode(receiptCanonicalJson(receipt.payload)));
-    return valid ? { valid: true, reason: 'Signature is valid for this exact receipt payload and public key.' } : { valid: false, reason: 'Signature mismatch: the receipt payload or signature was changed.' };
+    return valid ? { valid: true, reason: 'Signature is valid for this exact receipt and public verification file.' } : { valid: false, reason: 'Signature mismatch: the receipt payload or signature was changed.' };
   } catch (error) {
     return { valid: false, reason: error instanceof Error ? error.message : 'The receipt could not be verified.' };
   }
