@@ -45,7 +45,7 @@ No font downloads are needed, improving privacy and first load.
 - Drop zones resemble clipped envelopes; accepted files visibly become a source sheet with row/field counts.
 - Preview changes are overprinted: old values struck in vermillion, new values underlined in cobalt. Exceptions get a stamped `EXCEPTION` label and a plain-language reason.
 - Every computation is deterministic and local. Buttons use verbs and report outcomes in a polite live region.
-- Receipt evidence is signed with ECDSA P-256 using a private key generated locally and retained in browser IndexedDB. The UI exports public verification material separately, displays its key ID, and makes the trust boundary explicit: a valid signature proves control of that browser profile at signing time only when the public file was retained outside the receipt’s control. It is not a personal, organizational, legal, or trusted-timestamp identity claim.
+- Receipt evidence is signed with ECDSA P-256 using a private key generated locally and retained in browser IndexedDB. The UI exports a public verification file separately, displays its key ID, and makes the trust boundary explicit: a valid signature proves control of that browser profile at signing time only when the public file was retained outside the receipt’s control. It is not a personal, organizational, legal, or trusted-timestamp identity claim.
 
 ## Motion
 
@@ -70,3 +70,10 @@ No font downloads are needed, improving privacy and first load.
 - License/provenance: original AI-generated asset commissioned for this product; generated imagery is disclosed in the footer. Source PNG and prompt sidecar retained in `assets/src/`; optimized WebP ships from `public/assets/`.
 
 All small icons and registration marks are original CSS/SVG geometry authored in-repository. No third-party imagery or icon set is used.
+
+### Social preview and touch icon
+
+- `public/assets/metadata-change-receipt-social.jpg` is a 1200×630 center crop composed from the reviewed source artwork above. No new generated subject matter or text was added.
+- `public/apple-touch-icon.png` is a 180×180 rasterization of the repository’s original receipt mark.
+- Created: 2026-09-05.
+- License/provenance: same original commissioned artwork and in-repository mark described above.

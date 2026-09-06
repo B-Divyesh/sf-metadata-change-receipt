@@ -1,0 +1,1 @@
+Plan and verify photo metadata CSV changes, then export a signed receipt and exceptions.

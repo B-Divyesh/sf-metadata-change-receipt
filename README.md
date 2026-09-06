@@ -1,66 +1,72 @@
 # Metadata Change Receipt
 
-[Metadata Change Receipt](https://metadata-change-receipt.sociobot.in) is a local-first audit utility for photographers and small archives. It turns an exported metadata CSV plus one explicit transformation into a row-by-row before/after receipt, a planned CSV, and a complete exception list. A second post-edit CSV can be reconciled against the plan.
+Metadata Change Receipt helps photographers and small archive managers plan and check metadata CSV changes.
 
-It is an evidence layer around Lightroom, ExifTool, Immich, PhotoPrism, or a spreadsheet—not a photo organizer. It never uploads CSV contents and never writes image files or XMP/IPTC metadata.
+It runs in the browser. The free workflow exports planned values, exceptions, and an ECDSA P-256 signed receipt.
 
-## What it does
+## Try the isolated demo
 
-- Parses quoted, multiline CSV files up to 25 MB entirely in the browser.
-- Applies exact value, find/replace, keyword append, text prepend, and date-shift rules.
-- Scopes a rule with an optional exact-match condition.
-- Isolates blank/duplicate identifiers, malformed dates, structural row problems, missing assets, and mismatched post-edit values.
-- Exports the complete planned CSV, change ledger, exceptions CSV, a human-readable HTML receipt, and its signed receipt JSON.
-- Signs receipt evidence with an ECDSA P-256 private key kept in this browser’s IndexedDB. The separately exportable public verification material can verify a receipt without the private key; save it independently from the receipt. It identifies this browser profile, not a person, organization, or trusted timestamp.
-- Works offline after the first production visit.
+Open [`/demo`](https://metadata-change-receipt.sociobot.in/demo), or select **Try it with sample data** on the first screen.
 
-The free workflow includes every core CSV export, signed receipt, and public-key verification material at any supported row count. The optional $19 one-time Plus license adds local recipe saving, receipt notes, and a plain evidence-payload JSON export through the registered Sociobot/Dodo Live billing API.
+The demo loads five photo records. Its planned caption change produces four changed rows and one missing-filename exception.
 
-## CSV expectations
+Demo signing state is temporary. Demo labels use `demo:metadata-change-receipt:*` session storage and never read real product storage.
 
-The first row must contain unique, nonblank column names. Choose a stable, unique identity column such as filename, full path, asset ID, or UUID. For strongest verification, export the same identity and edited field after your external metadata job and load it in step 3.
+Use **Reset demo** to restore the sample. Use **Start for real** to discard demo state and load the empty workbench.
 
-CSV comparison proves what exports contain. It does **not** prove that pixels or embedded XMP/IPTC blocks were written; keep backups and test the external writer separately.
+## What the free workflow does
 
-## Run locally
+- Reads exported CSV files without uploading their contents.
+- Plans caption, date, keyword, and other IPTC-column changes.
+- Leaves the selected source CSV unchanged and exports a separate planned CSV.
+- Exports complete change and exception lists.
+- Compares a later CSV and reports missing, duplicate, or mismatched rows.
+- Signs receipt evidence with a private ECDSA P-256 key stored in browser IndexedDB.
+- Verifies a signed receipt with its separately saved public verification file.
+- Reloads the populated demo offline after its first visit.
+- Represents every intended change exactly once in the included 10,000-row boundary test.
+
+## Limits
+
+The app does not edit photos or write embedded XMP or IPTC data. A CSV comparison proves records, not image-file changes.
+
+Keep the public verification file outside the receipt folder. The key identifies one browser profile, not a person or trusted time.
+
+## Plus
+
+The free workflow includes signed receipts, public verification files, planned CSV files, and exception lists.
+
+Plus costs USD $19 once for one person. It adds local recipes, receipt notes, and a separate JSON evidence export.
+
+Purchase and license checks use the Sociobot billing API. A saved license check result is reused for up to one day.
+
+## Run and verify
+
+Use Node.js 22 or another current LTS release.
 
 ```sh
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173`.
-
-## Test and build
-
-```sh
+npm ci
 npm test
 npm run build
+npm run test:claims
+npm run preview -- --host 127.0.0.1
 ```
 
-The exact production build command is `npm run build`. It produces a static deploy in `./dist` with `dist/index.html` at the root.
-
-For browser checks, run `npm run preview` in one terminal, then:
+In another shell, run the production browser checks:
 
 ```sh
 npm run test:e2e
 A11Y_URL=http://127.0.0.1:4173 npm run test:a11y
 ```
 
-`CHROMIUM_PATH` can override the browser executable used by those scripts.
+Every public claim and its independent command is listed in [`.factory/claims.json`](.factory/claims.json).
 
-The browser check creates a signed receipt, verifies it using separately exported public material, confirms a changed payload is rejected, then fetches the emitted JS/CSS with an HTTP-cache bypass while offline and reloads the workbench to prove that the worker’s generated precache contains the shell.
+## Deploy
 
-## Deployment
+Deploy the contents of `dist/` to the product’s static host. The factory owns DNS and deployment configuration.
 
-Deploy the contents of `dist/` to Azure Static Web Apps. `public/staticwebapp.config.json` supplies SPA route fallback, cache policy, and security headers. The factory owns DNS, billing registration, and deployment.
+## Privacy and terms
 
-## Privacy and legal
+The product has no analytics or third-party runtime scripts. See [`/privacy`](https://metadata-change-receipt.sociobot.in/privacy) and [`/terms`](https://metadata-change-receipt.sociobot.in/terms).
 
-The app has no analytics, third-party fonts, runtime CDN scripts, or metadata uploads. License tokens and optional saved recipes use browser local storage. See the in-app [`/privacy`](https://metadata-change-receipt.sociobot.in/privacy) and [`/terms`](https://metadata-change-receipt.sociobot.in/terms) pages.
-
-The original risograph hero asset, prompt, and provenance live in `assets/src/`; the complete product-specific visual system is in `.factory/design.md`. Product scope is recorded in `.factory/brief.json`.
-
-## License
-
-MIT. See `LICENSE`.
+Licensed under the [MIT License](LICENSE).

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "demo-isolation",
+    "claim": "The sample demo does not read or change real recipes, licenses, or signing keys, and Reset demo restores its sample.",
+    "where": "demo banner, demo documentation",
+    "test": "npm run test:claims -- --grep @claim:demo-isolation",
+    "sandbox": "fresh browser context; seed real storage sentinels; issue and reset a demo receipt; assert sentinels and real IndexedDB are untouched"
+  },
+  {
+    "id": "local-private-flow",
+    "claim": "CSV planning, verification, and receipt signing do not upload metadata or use tracking.",
+    "where": "first screen, privacy page, README",
+    "test": "npm run test:claims -- --grep @claim:local-private-flow",
+    "sandbox": "fresh demo context; record requests through planning, verification, and signing; assert every request is same-origin"
+  },
+  {
+    "id": "offline-reload",
+    "claim": "The demo works offline after the first visit.",
+    "where": "first screen, privacy page, README",
+    "test": "npm run test:claims -- --grep @claim:offline-reload",
+    "sandbox": "fresh browser context; load /demo; wait for service-worker control; set the context offline; reload and assert populated sample output"
+  },
+  {
+    "id": "field-transformations",
+    "claim": "The workbench plans date, caption, keyword, and IPTC-column changes.",
+    "where": "first screen, README",
+    "test": "npm run test:claims -- --grep @claim:field-transformations",
+    "sandbox": "fresh demo context; exercise keyword append, date shift, caption set, and an IPTCHeadline set; assert changed values"
+  },
+  {
+    "id": "source-unchanged",
+    "claim": "The app leaves the selected source CSV unchanged and creates a separate planned CSV.",
+    "where": "workbench introduction, limits section, README",
+    "test": "npm run test:claims -- --grep @claim:source-unchanged",
+    "sandbox": "fresh demo context; upload a known CSV; export a plan; reread the selected file and compare both contents"
+  },
+  {
+    "id": "exact-once-10000",
+    "claim": "Every intended change in the 10,000-row boundary fixture appears exactly once.",
+    "where": "brief success measure, README",
+    "test": "npm run test:claims -- --grep @claim:exact-once-10000",
+    "sandbox": "fresh demo context; upload 10,000 unique rows; export changes; assert 10,000 rows and 10,000 unique identities"
+  },
+  {
+    "id": "csv-exports",
+    "claim": "The free workflow exports complete changes, planned-value, and exception CSV files.",
+    "where": "workbench controls, Plus section, README",
+    "test": "npm run test:claims -- --grep @claim:csv-exports",
+    "sandbox": "fresh demo context; download all three CSV outputs; assert headers, four changes, five planned rows, and the blank-identity exception"
+  },
+  {
+    "id": "verification-exceptions",
+    "claim": "A later CSV is checked against every planned change, with missing, duplicate, and mismatched rows listed as exceptions.",
+    "where": "verification panel, how-it-works section, README",
+    "test": "npm run test:claims -- --grep @claim:verification-exceptions",
+    "sandbox": "fresh demo context; load a later CSV containing a mismatch, duplicate, and missing row; assert the exported reasons"
+  },
+  {
+    "id": "signed-receipt",
+    "claim": "The free workflow exports an ECDSA P-256 signed receipt that verifies with its public verification file.",
+    "where": "receipt panel, Plus section, README",
+    "test": "npm run test:claims -- --grep @claim:signed-receipt",
+    "sandbox": "fresh demo context; issue both receipt files; assert the signature envelope and verify it through the public-file UI"
+  },
+  {
+    "id": "tamper-detection",
+    "claim": "The public verification file detects a receipt payload changed after signing.",
+    "where": "receipt panel, terms page, README",
+    "test": "npm run test:claims -- --grep @claim:tamper-detection",
+    "sandbox": "fresh demo context; alter a signed before/after value; verify it with the original public material; assert a signature mismatch"
+  },
+  {
+    "id": "local-signing-key",
+    "claim": "Real receipts reuse a private signing key stored in this browser's IndexedDB.",
+    "where": "receipt panel, privacy page, README",
+    "test": "npm run test:claims -- --grep @claim:local-signing-key",
+    "sandbox": "fresh context entered through /demo; start for real; sign before and after reload; assert the same key ID and local IndexedDB"
+  },
+  {
+    "id": "plus-price",
+    "claim": "Plus costs USD $19 as a one-time purchase with no subscription.",
+    "where": "first screen, Plus section, terms page, README",
+    "test": "npm run test:claims -- --grep @claim:plus-price",
+    "sandbox": "fresh demo entry; open the real offer link; assert the hosted checkout reports one_time_price, USD, and 1900 minor units"
+  },
+  {
+    "id": "daily-license-check",
+    "claim": "A saved license is checked with Sociobot at most once per day.",
+    "where": "restore dialog, privacy page, README",
+    "test": "npm run test:claims -- --grep @claim:daily-license-check",
+    "sandbox": "fresh context entered through /demo; intercept a successful verification; reload twice; assert exactly one API check and URL token removal"
+  },
+  {
+    "id": "plus-deliverables",
+    "claim": "A valid Plus license adds local saved recipes, receipt notes, and a separate JSON evidence export.",
+    "where": "Plus section, terms page, README",
+    "test": "npm run test:claims -- --grep @claim:plus-deliverables",
+    "sandbox": "fresh context entered through /demo; use a recorded valid-license response; save a recipe; export a noted receipt and the JSON evidence"
+  }
+]
