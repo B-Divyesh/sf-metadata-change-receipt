@@ -38,10 +38,10 @@ img { max-width: 100%; height: auto; }
 .muted { color: var(--muted); }
 
 .site-header { width: min(1180px, calc(100% - 40px)); min-height: 72px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 2px solid var(--ink); }
-.wordmark { display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 800; text-decoration: none; letter-spacing: -.02em; }
+.wordmark { min-height: 44px; display: flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 800; text-decoration: none; letter-spacing: -.02em; }
 .wordmark img { flex: none; }
 .site-header nav, footer nav { display: flex; align-items: center; gap: 24px; }
-.site-header nav a, .site-header .text-button { min-height: 44px; display: inline-flex; align-items: center; color: var(--ink); font-size: .9rem; font-weight: 700; }
+.site-header nav a, .site-header .text-button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); font-size: .9rem; font-weight: 700; }
 .text-button { min-height: 44px; padding: 6px 0; border: 0; background: transparent; color: var(--cobalt-dark); font-weight: 800; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
 .text-button:hover { text-decoration-thickness: 3px; }
 .offline-banner { padding: 10px 20px; text-align: center; background: var(--mustard); border-bottom: 2px solid var(--ink); }
@@ -201,6 +201,7 @@ ins { color: var(--cobalt-dark); font-weight: 800; text-decoration-thickness: 2p
 
 footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0; display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 24px 40px; border-top: 2px solid var(--ink); }
 footer p { margin: 4px 0 0; color: var(--muted); }
+footer nav a { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 footer .fine-print { grid-column: 1 / -1; padding-top: 18px; border-top: 1px solid var(--rule); }
 
 dialog { width: min(560px, calc(100% - 32px)); padding: 0; border: 3px solid var(--ink); border-radius: 0; background: var(--sheet); box-shadow: 10px 10px 0 var(--ink); }
@@ -247,7 +248,8 @@ dialog h2 { margin: 0 0 12px; font: 700 2rem var(--serif); }
   .wordmark span { max-width: 150px; line-height: 1.05; }
   .site-header nav a { display: none; }
   .site-header nav a:first-child, .site-header nav a:last-child { display: inline-flex; }
-  .site-header nav { gap: 12px; }
+  .site-header { gap: 8px; }
+  .site-header nav { gap: 8px; }
   .site-header nav a { font-size: .82rem; }
   .hero { width: calc(100% - 32px); padding: 48px 0 56px; }
   .hero h1 { font-size: clamp(3.2rem, 18vw, 4.5rem); }

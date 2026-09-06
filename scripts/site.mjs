@@ -11,6 +11,81 @@ const errors = [];
 page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
 page.on('pageerror', (error) => errors.push(String(error)));
 
+async function assertNavigationGeometry(path, viewport) {
+  await page.setViewportSize(viewport);
+  await page.goto(`${baseUrl}${path}`, { waitUntil: 'networkidle' });
+  const result = await page.locator('header, footer').evaluateAll((containers) => containers.map((container) => {
+    const targets = [...container.querySelectorAll('a, button')]
+      .filter((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      })
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          name: element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName,
+          width: rect.width,
+          height: rect.height,
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom
+        };
+      });
+    const separations = [];
+    for (let first = 0; first < targets.length; first += 1) {
+      for (let second = first + 1; second < targets.length; second += 1) {
+        const a = targets[first];
+        const b = targets[second];
+        const horizontal = Math.max(a.left - b.right, b.left - a.right, 0);
+        const vertical = Math.max(a.top - b.bottom, b.top - a.bottom, 0);
+        separations.push({ pair: `${a.name} / ${b.name}`, distance: Math.hypot(horizontal, vertical) });
+      }
+    }
+    return { landmark: container.tagName.toLowerCase(), targets, separations };
+  }));
+
+  for (const container of result) {
+    for (const target of container.targets) {
+      assert(target.width >= 44 && target.height >= 44,
+        `${path} ${viewport.width}px ${container.landmark} target ${target.name} is ${target.width.toFixed(2)}×${target.height.toFixed(2)}px`);
+    }
+    for (const separation of container.separations) {
+      assert(separation.distance >= 8,
+        `${path} ${viewport.width}px ${container.landmark} targets ${separation.pair} are ${separation.distance.toFixed(2)}px apart`);
+    }
+  }
+}
+
+async function assertNavigationKeyboardFocus(viewport) {
+  await page.setViewportSize(viewport);
+  await page.goto(`${baseUrl}/privacy`, { waitUntil: 'networkidle' });
+  const expected = await page.locator('header a:visible, header button:visible, footer a:visible, footer button:visible').evaluateAll((targets) => targets.map((target, index) => {
+    const id = `navigation-target-${index}`;
+    target.setAttribute('data-navigation-test-id', id);
+    return id;
+  }));
+  const reached = new Set();
+  for (let press = 0; press < 40 && reached.size < expected.length; press += 1) {
+    await page.keyboard.press('Tab');
+    const focus = await page.evaluate(() => {
+      const element = document.activeElement;
+      if (!(element instanceof HTMLElement)) return null;
+      const id = element.getAttribute('data-navigation-test-id');
+      if (!id) return null;
+      const style = getComputedStyle(element);
+      return { id, outlineStyle: style.outlineStyle, outlineWidth: Number.parseFloat(style.outlineWidth) };
+    });
+    if (focus) {
+      assert.notEqual(focus.outlineStyle, 'none', `${focus.id} has no visible keyboard focus style`);
+      assert(focus.outlineWidth >= 3, `${focus.id} focus outline is only ${focus.outlineWidth}px`);
+      reached.add(focus.id);
+    }
+  }
+  assert.deepEqual([...reached].sort(), expected.sort(), `${viewport.width}px navigation targets were not all reached with Tab`);
+}
+
 const routes = [
   ['/', 'Metadata Change Receipt — plan and prove CSV changes', 'https://metadata-change-receipt.sociobot.in/'],
   ['/demo', 'Demo — Metadata Change Receipt', 'https://metadata-change-receipt.sociobot.in/demo'],
@@ -32,8 +107,16 @@ for (const [path, title, canonical] of routes) {
   assert.equal(await page.locator('img:not([alt])').count(), 0);
   const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
   assert(width.scroll <= width.client + 1, `${path} overflows horizontally: ${JSON.stringify(width)}`);
+  await assertNavigationGeometry(path, { width: 390, height: 844 });
 }
 
+for (const viewport of [{ width: 320, height: 800 }, { width: 1440, height: 1000 }]) {
+  for (const [path] of routes) await assertNavigationGeometry(path, viewport);
+}
+await assertNavigationKeyboardFocus({ width: 390, height: 844 });
+await assertNavigationKeyboardFocus({ width: 1440, height: 1000 });
+
+await page.setViewportSize({ width: 390, height: 844 });
 await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' });
 await page.keyboard.press('Tab');
 assert.equal(await page.evaluate(() => document.activeElement?.textContent?.trim()), 'Skip to main content');
@@ -57,6 +140,6 @@ if (process.env.SITE_EXPECT_404 === '1') {
   assert(errors.every((message) => /Failed to load resource: the server responded with a status of 404/.test(message)));
 }
 
-console.log(JSON.stringify({ baseUrl, routes: routes.length, keyboard: true, reducedMotion: true, textZoom: true, errors: 0 }));
+console.log(JSON.stringify({ baseUrl, routes: routes.length, navigationTargets: '44x44 with 8px separation', phoneWidths: [320, 390], desktopWidth: 1440, keyboard: true, reducedMotion: true, textZoom: true, errors: 0 }));
 await context.close();
 await browser.close();

@@ -9,8 +9,8 @@ a:hover { text-decoration-thickness: 3px; }
 header, footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 2px solid #1e2522; }
 header { min-height: 72px; }
 header nav, footer nav { display: flex; gap: 24px; }
-header nav a, footer nav a { min-height: 44px; display: inline-flex; align-items: center; }
-.wordmark { display: flex; align-items: center; gap: 10px; color: #1e2522; font-weight: 800; text-decoration: none; }
+header nav a, footer nav a { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.wordmark { min-height: 44px; display: flex; align-items: center; gap: 10px; color: #1e2522; font-weight: 800; text-decoration: none; }
 main { width: min(850px, calc(100% - 40px)); min-height: 68vh; margin: 0 auto; padding: 80px 0 120px; }
 .error-code { margin: 0; color: #8e281e; font-weight: 900; letter-spacing: .16em; }
 h1 { max-width: 700px; margin: 8px 0 20px; font: 400 clamp(3.2rem, 9vw, 6rem)/.95 Georgia, "Times New Roman", serif; letter-spacing: -.055em; }
